@@ -173,14 +173,15 @@ function App(){
       {screen==="editor"&&(
         <>
           {/* Editor header */}
-          <div style={{maxWidth:900,margin:"0 auto 10px",display:"flex",alignItems:"center",gap:10,paddingTop:"env(safe-area-inset-top,0px)"}}>
-            <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
-            <input type="text" value={title} onChange={e=>setTitle(e.target.value)}
-              placeholder="例: 3球目攻撃パターン"
-              style={{...inputStyle,flex:1,fontSize:16,fontWeight:700,textAlign:"center"}}/>
-            <button onClick={saveCurrent} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:14,padding:"8px 16px",fontWeight:700,minHeight:40}}>💾 保存</button>
+          <div style={{maxWidth:650,margin:"0 auto 6px",paddingTop:"env(safe-area-inset-top,0px)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:13,padding:"8px 14px",minHeight:40,flexShrink:0}}>← 戻る</button>
+              <input type="text" value={title} onChange={e=>setTitle(e.target.value)}
+                placeholder="タイトルを入力"
+                style={{...inputStyle,flex:1,fontSize:14,fontWeight:700,textAlign:"center",minWidth:0,padding:"8px 10px"}}/>
+            </div>
           </div>
-          <div style={{maxWidth:900,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
+          <div style={{maxWidth:650,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
             {[{id:"draw",lb:"⚡ 図面"},{id:"notes",lb:"📄 戦術ノート"}].map(pg=>(
               <button key={pg.id} onClick={()=>setEditorTab(pg.id)}
                 style={{...bBtn,fontSize:13,padding:"6px 18px",fontWeight:700,
@@ -192,6 +193,9 @@ function App(){
           </div>
           {editorTab==="draw"&&<DrawPage drawings={drawings} setDrawings={setDrawings} memos={memos} setMemos={setMemos}/>}
           {editorTab==="notes"&&<NotesPage notes={notes} setNotes={setNotes} title={title}/>}
+          <div style={{maxWidth:650,margin:"16px auto 0"}}>
+            <button onClick={saveCurrent} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12}}>💾 保存する</button>
+          </div>
         </>
       )}
     </div>
@@ -1404,18 +1408,22 @@ function PersistentApp(){
       {screen==="equip"&&<EquipScreen equipment={equipment} setEquipment={setEquipment} logs={logs} onBack={()=>setScreen("home")}/>}
       {screen==="editor"&&(
         <>
-          <div style={{maxWidth:900,margin:"0 auto 10px",display:"flex",alignItems:"center",gap:10}}>
-            <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:14,padding:"6px 14px"}}>← 戻る</button>
-            <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="例: 3球目攻撃パターン" style={{...inputStyle,flex:1,fontSize:16,fontWeight:700,textAlign:"center"}}/>
-            <button onClick={saveCurrent} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:14,padding:"6px 16px",fontWeight:700}}>💾 保存</button>
+          <div style={{maxWidth:650,margin:"0 auto 6px",paddingTop:"env(safe-area-inset-top,0px)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:13,padding:"8px 14px",minHeight:40,flexShrink:0}}>← 戻る</button>
+              <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="タイトルを入力" style={{...inputStyle,flex:1,fontSize:14,fontWeight:700,textAlign:"center",minWidth:0,padding:"8px 10px"}}/>
+            </div>
           </div>
-          <div style={{maxWidth:900,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
+          <div style={{maxWidth:650,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
             {[{id:"draw",lb:"⚡ 図面"},{id:"notes",lb:"📄 戦術ノート"}].map(pg=>(
               <button key={pg.id} onClick={()=>setEditorTab(pg.id)} style={{...bBtn,fontSize:13,padding:"6px 18px",fontWeight:700,background:editorTab===pg.id?"rgba(59,130,246,0.45)":"rgba(255,255,255,0.06)",borderBottom:editorTab===pg.id?"2px solid #3b82f6":"2px solid transparent"}}>{pg.lb}</button>
             ))}
           </div>
           {editorTab==="draw"&&<DrawPage drawings={drawings} setDrawings={setDrawings} memos={memos} setMemos={setMemos}/>}
           {editorTab==="notes"&&<NotesPage notes={notes} setNotes={setNotes} title={title}/>}
+          <div style={{maxWidth:650,margin:"16px auto 0"}}>
+            <button onClick={saveCurrent} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12}}>💾 保存する</button>
+          </div>
         </>
       )}
     </div>
