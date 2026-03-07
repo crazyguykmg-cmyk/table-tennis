@@ -125,6 +125,30 @@ function renderThumb(canvas,drawings,memos){
   memos.forEach(m=>{ctx.save();ctx.fillStyle=m.color;ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(m.x,m.y,8,0,Math.PI*2);ctx.fill();ctx.restore();});
   ctx.restore();
 }
+/* ── Full renderer with memo text ── */
+function renderFull(canvas,drawings,memos){
+  if(!canvas)return;
+  const ctx=canvas.getContext("2d");const s=canvas.width/CW;
+  ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();ctx.scale(s,s);
+  drawCourt(ctx);
+  drawings.filter(d=>d.type==="cone").forEach(d=>drawCone(ctx,d));
+  drawings.filter(d=>d.type!=="cone"&&d.type!=="player").forEach(d=>renderStroke(ctx,d,true));
+  drawings.filter(d=>d.type==="player").forEach(d=>drawPlayer(ctx,d));
+  memos.forEach(m=>{
+    ctx.save();
+    const txt=m.text||"";const mLines=txt.split("\n");
+    const mw=Math.min(180,Math.max(80,...mLines.map(l=>l.length*13))+20);
+    const mh=mLines.length*18+14;
+    ctx.fillStyle="rgba(0,0,0,0.85)";
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.fill();
+    ctx.strokeStyle=m.color;ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.stroke();
+    ctx.fillStyle=m.color;ctx.font="12px 'Noto Sans JP',sans-serif";ctx.textAlign="left";
+    mLines.forEach((l,i)=>ctx.fillText(l,m.x+6,m.y+14+i*18));
+    ctx.restore();
+  });
+  ctx.restore();
+}
 
 const bBtn={padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:18,color:"#e2e8f0",transition:"all 0.15s"};
 const aBtn={...bBtn,background:"rgba(255,255,255,0.06)"};
@@ -293,7 +317,10 @@ function HomeScreen({onNew,onGallery,onLog,onEquip,saved,setSaved,logs,setLogs,m
             {equipment.foreRubber&&(
               <div style={{padding:10,borderRadius:10,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)"}}>
                 <div style={{fontSize:11,color:"#3b82f6",fontWeight:700,marginBottom:2}}>フォア面</div>
-                <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0",marginBottom:4}}>{equipment.foreRubber}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{equipment.foreRubber}</span>
+                  {equipment.foreThickness&&equipment.foreThickness!=="other"&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(59,130,246,0.2)",color:"#93c5fd"}}>{equipment.foreThickness}</span>}
+                </div>
                 {equipment.foreDate?(
                   <div>
                     <div style={{fontSize:11,color:"#64748b"}}>{equipment.foreDate} 〜</div>
@@ -309,7 +336,10 @@ function HomeScreen({onNew,onGallery,onLog,onEquip,saved,setSaved,logs,setLogs,m
             {equipment.backRubber&&(
               <div style={{padding:10,borderRadius:10,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)"}}>
                 <div style={{fontSize:11,color:"#ef4444",fontWeight:700,marginBottom:2}}>バック面</div>
-                <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0",marginBottom:4}}>{equipment.backRubber}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{equipment.backRubber}</span>
+                  {equipment.backThickness&&equipment.backThickness!=="other"&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(239,68,68,0.2)",color:"#fca5a5"}}>{equipment.backThickness}</span>}
+                </div>
                 {equipment.backDate?(
                   <div>
                     <div style={{fontSize:11,color:"#64748b"}}>{equipment.backDate} 〜</div>
@@ -368,6 +398,7 @@ function HomeScreen({onNew,onGallery,onLog,onEquip,saved,setSaved,logs,setLogs,m
 /* ════════════ EQUIPMENT ════════════ */
 function EquipScreen({equipment,setEquipment,logs,onBack}){
   const [racket,setRacket]=useState(equipment.racket||"");
+  const [racketNotes,setRacketNotes]=useState(equipment.racketNotes||"");
   const [foreRubber,setForeRubber]=useState(equipment.foreRubber||"");
   const [backRubber,setBackRubber]=useState(equipment.backRubber||"");
   const [foreDate,setForeDate]=useState(equipment.foreDate||today());
@@ -404,7 +435,7 @@ function EquipScreen({equipment,setEquipment,logs,onBack}){
         const endDate=backDate!==prev.backDate?backDate:today();
         hist.unshift({side:"バック",rubber:prev.backRubber,from:prev.backDate||"不明",to:endDate,usedMin:calcRubberHoursPeriod(logs,prev.backDate,endDate)});
       }
-      return{racket,foreRubber,backRubber,foreDate,backDate,foreThickness:foreThickness==="other"?"":foreThickness,backThickness:backThickness==="other"?"":backThickness,foreNotes,backNotes,racketDate:racket!==prev.racket?today():(prev.racketDate||today()),history:hist.slice(0,50)};
+      return{racket,racketNotes,foreRubber,backRubber,foreDate,backDate,foreThickness:foreThickness==="other"?"":foreThickness,backThickness:backThickness==="other"?"":backThickness,foreNotes,backNotes,racketDate:racket!==prev.racket?today():(prev.racketDate||today()),history:hist.slice(0,50)};
     });
     setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
@@ -491,9 +522,13 @@ function EquipScreen({equipment,setEquipment,logs,onBack}){
         {/* Edit form */}
         <div style={{...card,marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:700,marginBottom:14}}>用具を設定</div>
-          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
             <span style={{fontSize:12,color:"#94a3b8"}}>🏓 ラケット</span>
             <input type="text" value={racket} onChange={e=>setRacket(e.target.value)} style={inputStyle} placeholder="例: インナーフォース レイヤー ALC"/>
+          </label>
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+            <span style={{fontSize:11,color:"#94a3b8"}}>ラケット備考</span>
+            <input type="text" value={racketNotes} onChange={e=>setRacketNotes(e.target.value)} style={inputStyle} placeholder="例: FL、90g、弾みが強い"/>
           </label>
           <div style={{padding:12,borderRadius:10,background:"rgba(59,130,246,0.05)",border:"1px solid rgba(59,130,246,0.15)",marginBottom:10}}>
             <div style={{fontSize:12,color:"#3b82f6",fontWeight:700,marginBottom:8}}>フォア面</div>
@@ -1564,7 +1599,7 @@ function ServeOrderScreen({saved,serveOrders,setServeOrders,onBack}){
 
   useEffect(()=>{
     if(view==="play"&&playRef.current&&currentTactic){
-      renderThumb(playRef.current,currentTactic.drawings,currentTactic.memos);
+      renderFull(playRef.current,currentTactic.drawings,currentTactic.memos);
     }
   },[view,currentIdx,currentTactic]);
 
