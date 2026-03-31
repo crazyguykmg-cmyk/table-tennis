@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<title>卓球戦術ノート</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏓</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,#root{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden}
+body{background:#0f172a;font-family:'Noto Sans JP','Hiragino Kaku Gothic Pro',sans-serif;color:#e2e8f0}
+input,textarea,select,button{font-family:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
+input[type=number]::-webkit-inner-spin-button{opacity:1}
+select{-webkit-appearance:none;appearance:none}
+#loading{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;z-index:9999;color:#e2e8f0;font-family:'Noto Sans JP',sans-serif}
+#loading .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="loading">
+<div style="font-size:48px;margin-bottom:16px">🏓</div>
+<div class="spinner"></div>
+<div style="font-size:14px;color:#64748b">読み込み中...</div>
+</div>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+function loadScript(src, cb) {
+  var s = document.createElement('script');
+  s.src = src;
+  s.onload = cb;
+  s.onerror = function() {
+    document.getElementById('loading').innerHTML = '<div style="padding:20px;text-align:center"><div style="font-size:48px;margin-bottom:16px">⚠️</div><div style="font-size:16px;margin-bottom:8px">読み込みに失敗しました</div><div style="font-size:13px;color:#64748b">インターネット接続を確認して<br>ページを再読み込みしてください</div><br><button onclick="location.reload()" style="padding:10px 24px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:14px;cursor:pointer">再読み込み</button></div>';
+  };
+  document.head.appendChild(s);
+}
+loadScript('https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js', function() {
+  var appScript = document.getElementById('app-source');
+  if (appScript && window.Babel) {
+    try {
+      var code = Babel.transform(appScript.textContent, {presets: ['react']}).code;
+      var fn = new Function(code);
+      fn();
+      var el = document.getElementById('loading');
+      if (el) el.style.display = 'none';
+    } catch(e) {
+      console.error(e);
+      document.getElementById('loading').innerHTML = '<div style="padding:20px;text-align:center"><div style="font-size:48px;margin-bottom:16px">⚠️</div><div style="font-size:14px;color:#ef4444">エラー: ' + e.message + '</div><br><button onclick="location.reload()" style="padding:10px 24px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:14px;cursor:pointer">再読み込み</button></div>';
+    }
+  }
+});
+</script>
+<script type="text/plain" id="app-source">
+const {useState,useRef,useCallback,useEffect}=React;
+
+const STORAGE_KEYS={saved:"tt_saved",logs:"tt_logs",matches:"tt_matches",presets:"tt_presets",equipment:"tt_equipment",serveOrders:"tt_serveOrders"};
+function loadState(key,fallback){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch(e){return fallback;}}
+function usePersist(key,fallback){
+  const [val,setVal]=useState(()=>loadState(key,fallback));
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}},[key,val]);
+  return[val,setVal];
+}
+
+
+const CW=600,CH=780;
+const COLORS=[{n:"赤",v:"#ef4444"},{n:"青",v:"#3b82f6"},{n:"黄",v:"#eab308"},{n:"白",v:"#ffffff"},{n:"黒",v:"#111111"}];
+const WIDTHS=[2,4,6];
+const TOOLS=[
+  {id:"pen",icon:"✏️",label:"ペン"},{id:"cone",icon:"🔦",label:"返球範囲"},
+  {id:"player",icon:"🧍",label:"選手配置"},{id:"memo",icon:"📝",label:"メモ"},
+  {id:"move",icon:"✋",label:"移動"},{id:"recolor",icon:"🎨",label:"色変更"},
+  {id:"eraser",icon:"🧹",label:"消しゴム"},
+];
+
+/* ── Stroke correction ── */
+function pLen(pts){let l=0;for(let i=1;i<pts.length;i++)l+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);return l;}
+function eDist(pts){return Math.hypot(pts[pts.length-1].x-pts[0].x,pts[pts.length-1].y-pts[0].y);}
+function mDev(pts){const a=pts[0],b=pts[pts.length-1],dx=b.x-a.x,dy=b.y-a.y,ls=dx*dx+dy*dy;if(!ls)return{d:0,pt:pts[Math.floor(pts.length/2)]};let mx=0,mp=pts[0];for(let i=1;i<pts.length-1;i++){const t=Math.max(0,Math.min(1,((pts[i].x-a.x)*dx+(pts[i].y-a.y)*dy)/ls));const d=Math.hypot(pts[i].x-(a.x+t*dx),pts[i].y-(a.y+t*dy));if(d>mx){mx=d;mp=pts[i];}}return{d:mx,pt:mp};}
+function correct(raw){if(raw.length<2)return null;const dd=eDist(raw),pl=pLen(raw),{d:dev,pt:cp}=mDev(raw);if(dd<10&&pl<15)return null;if((dd>0?dev/dd:0)<0.08||((pl>0?dd/pl:1)>0.95&&dev<15))return{type:"line",points:[raw[0],raw[raw.length-1]]};const mid={x:(raw[0].x+raw[raw.length-1].x)/2,y:(raw[0].y+raw[raw.length-1].y)/2};return{type:"curve",points:[raw[0],{x:mid.x+(cp.x-mid.x)*1.3,y:mid.y+(cp.y-mid.y)*1.3},raw[raw.length-1]]};}
+
+/* ── Canvas ── */
+function drawCourt(ctx){const p=40,tw=CW-p*2,th=CH-p*2,tx=p,ty=p;ctx.save();ctx.shadowColor="rgba(0,0,0,0.5)";ctx.shadowBlur=20;ctx.shadowOffsetX=6;ctx.shadowOffsetY=6;ctx.fillStyle="#2d1a0e";ctx.beginPath();ctx.roundRect(tx-6,ty-6,tw+12,th+12,6);ctx.fill();ctx.restore();ctx.fillStyle="#1a5c2e";ctx.beginPath();ctx.roundRect(tx,ty,tw,th,4);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(tx,ty,tw,th,4);ctx.stroke();ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(tx+tw/2,ty);ctx.lineTo(tx+tw/2,ty+th);ctx.stroke();const ny=ty+th/2;ctx.strokeStyle="#4a4a4a";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(tx-10,ny);ctx.lineTo(tx+tw+10,ny);ctx.stroke();ctx.fillStyle="#666";ctx.fillRect(tx-14,ny-6,8,12);ctx.fillRect(tx+tw+6,ny-6,8,12);ctx.strokeStyle="rgba(255,255,255,0.15)";ctx.lineWidth=1;for(let i=0;i<12;i++){const xp=tx+(tw/11)*i;ctx.beginPath();ctx.moveTo(xp,ny-3);ctx.lineTo(xp,ny+3);ctx.stroke();}ctx.fillStyle="rgba(255,255,255,0.35)";ctx.font="bold 14px 'Noto Sans JP',sans-serif";ctx.textAlign="center";ctx.fillText("相手コート",tx+tw/2,ty+th*0.2);ctx.fillText("自分コート",tx+tw/2,ty+th*0.8);}
+function drawArr(ctx,fx,fy,tx,ty,sz){const a=Math.atan2(ty-fy,tx-fx);ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx-sz*Math.cos(a-Math.PI/6),ty-sz*Math.sin(a-Math.PI/6));ctx.lineTo(tx-sz*Math.cos(a+Math.PI/6),ty-sz*Math.sin(a+Math.PI/6));ctx.closePath();ctx.fill();}
+function drawCone(ctx,d){const{origin:o,target:t,spread:s,color:c,opacity:op}=d;const ang=Math.atan2(t.y-o.y,t.x-o.x),dist=Math.hypot(t.x-o.x,t.y-o.y),hs=(s||40)*Math.PI/180/2;ctx.save();ctx.globalAlpha=op||0.25;ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(o.x,o.y);ctx.arc(o.x,o.y,dist,ang-hs,ang+hs);ctx.closePath();ctx.fill();ctx.restore();ctx.save();ctx.globalAlpha=Math.min((op||0.25)+0.3,0.8);ctx.strokeStyle=c;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(o.x,o.y);ctx.lineTo(o.x+dist*Math.cos(ang-hs),o.y+dist*Math.sin(ang-hs));ctx.stroke();ctx.beginPath();ctx.moveTo(o.x,o.y);ctx.lineTo(o.x+dist*Math.cos(ang+hs),o.y+dist*Math.sin(ang+hs));ctx.stroke();ctx.beginPath();ctx.arc(o.x,o.y,dist,ang-hs,ang+hs);ctx.stroke();ctx.setLineDash([]);ctx.restore();ctx.save();ctx.globalAlpha=0.4;ctx.strokeStyle=c;ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(o.x,o.y);ctx.lineTo(t.x,t.y);ctx.stroke();ctx.setLineDash([]);ctx.restore();ctx.save();ctx.fillStyle=c;ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(o.x,o.y,5,0,Math.PI*2);ctx.fill();ctx.restore();}
+function renderStroke(ctx,d,arrows){ctx.strokeStyle=d.color;ctx.fillStyle=d.color;ctx.lineWidth=d.width;ctx.lineCap="round";ctx.lineJoin="round";ctx.setLineDash(d.type==="curve"?[8,6]:[]);if(d.type==="line"){const[a,b]=d.points;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();if(arrows)drawArr(ctx,a.x,a.y,b.x,b.y,d.width*3);}else if(d.type==="curve"){const[a,cp,b]=d.points;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo(cp.x,cp.y,b.x,b.y);ctx.stroke();if(arrows)drawArr(ctx,cp.x,cp.y,b.x,b.y,d.width*3);}else if(d.type==="raw"){if(d.points.length<2)return;ctx.beginPath();ctx.moveTo(d.points[0].x,d.points[0].y);for(let i=1;i<d.points.length;i++)ctx.lineTo(d.points[i].x,d.points[i].y);ctx.stroke();if(arrows&&d.points.length>=2){const l=d.points[d.points.length-1],p2=d.points[d.points.length-2];drawArr(ctx,p2.x,p2.y,l.x,l.y,d.width*3);}}ctx.setLineDash([]);}
+function drawLive(ctx,pts,col,w){if(pts.length<2)return;ctx.save();ctx.strokeStyle=col;ctx.lineWidth=w;ctx.lineCap="round";ctx.lineJoin="round";ctx.globalAlpha=0.6;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);ctx.stroke();ctx.restore();}
+function drawPlayer(ctx,d){const{pos:p,color:c,label}=d;const r=18;ctx.save();ctx.shadowColor="rgba(0,0,0,0.4)";ctx.shadowBlur=6;ctx.shadowOffsetY=2;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=c;ctx.globalAlpha=0.85;ctx.fill();ctx.restore();ctx.save();ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.strokeStyle="#fff";ctx.lineWidth=2.5;ctx.globalAlpha=0.9;ctx.stroke();ctx.restore();ctx.save();ctx.beginPath();ctx.arc(p.x,p.y-3,r*0.55,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,0.2)";ctx.fill();ctx.restore();ctx.save();ctx.fillStyle="#fff";ctx.globalAlpha=1;ctx.font="bold 13px 'Noto Sans JP',sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label||"",p.x,p.y+1);ctx.restore();}
+
+/* ── Hit testing ── */
+function dSeg(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,ls=dx*dx+dy*dy;if(!ls)return Math.hypot(p.x-a.x,p.y-a.y);let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/ls;t=Math.max(0,Math.min(1,t));return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy));}
+function dCrv(p,pts){let m=1e9;for(let i=0;i<=30;i++){const t=i/30;const x=(1-t)**2*pts[0].x+2*(1-t)*t*pts[1].x+t**2*pts[2].x;const y=(1-t)**2*pts[0].y+2*(1-t)*t*pts[1].y+t**2*pts[2].y;m=Math.min(m,Math.hypot(p.x-x,p.y-y));}return m;}
+function inCone(p,d){const{origin:o,target:t,spread:s}=d;const dist=Math.hypot(t.x-o.x,t.y-o.y);if(Math.hypot(p.x-o.x,p.y-o.y)>dist+15)return false;const a=Math.atan2(t.y-o.y,t.x-o.x),pa=Math.atan2(p.y-o.y,p.x-o.x);let df=Math.abs(pa-a);if(df>Math.PI)df=2*Math.PI-df;return df<((s||40)*Math.PI/180/2)+0.1;}
+function findNearest(pos,drawings,th=25){let bi=-1,bd=th;for(let i=drawings.length-1;i>=0;i--){const d=drawings[i];let dist=1e9;if(d.type==="player")dist=Math.hypot(d.pos.x-pos.x,d.pos.y-pos.y);else if(d.type==="cone"){if(inCone(pos,d))dist=0;}else if(d.type==="line")dist=dSeg(pos,d.points[0],d.points[1]);else if(d.type==="curve")dist=dCrv(pos,d.points);else if(d.type==="raw"){for(const pt of d.points){dist=Math.min(dist,Math.hypot(pt.x-pos.x,pt.y-pos.y));}}if(dist<bd){bd=dist;bi=i;}}return bi;}
+function findNearestMemo(pos,memos,th=40){let bi=-1,bd=th;for(let i=memos.length-1;i>=0;i--){
+  // Check against a larger box area around memo, not just center point
+  const m=memos[i],boxW=100,boxH=Math.max(30,((m.text||"").split("\n").length)*20+10);
+  const dx=pos.x-m.x,dy=pos.y-m.y;
+  if(dx>=-20&&dx<=boxW+20&&dy>=-20&&dy<=boxH+20){const d=Math.max(0,Math.abs(dx-boxW/2)-boxW/2)+Math.max(0,Math.abs(dy-boxH/2)-boxH/2);if(d<bd){bd=d;bi=i;}}
+  else{const d=Math.hypot(pos.x-m.x,pos.y-m.y);if(d<bd){bd=d;bi=i;}}
+}return bi;}
+function offsetDrawing(d,dx,dy){if(d.type==="cone")return{...d,origin:{x:d.origin.x+dx,y:d.origin.y+dy},target:{x:d.target.x+dx,y:d.target.y+dy}};if(d.type==="player")return{...d,pos:{x:d.pos.x+dx,y:d.pos.y+dy}};return{...d,points:d.points.map(p=>({x:p.x+dx,y:p.y+dy}))};}
+
+/* ── Thumbnail renderer ── */
+function renderThumb(canvas,drawings,memos){
+  if(!canvas)return;
+  const ctx=canvas.getContext("2d");const s=canvas.width/CW;
+  ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();ctx.scale(s,s);
+  drawCourt(ctx);
+  drawings.filter(d=>d.type==="cone").forEach(d=>drawCone(ctx,d));
+  drawings.filter(d=>d.type!=="cone"&&d.type!=="player").forEach(d=>renderStroke(ctx,d,true));
+  drawings.filter(d=>d.type==="player").forEach(d=>drawPlayer(ctx,d));
+  // Memo dots
+  memos.forEach(m=>{ctx.save();ctx.fillStyle=m.color;ctx.globalAlpha=0.8;ctx.beginPath();ctx.arc(m.x,m.y,8,0,Math.PI*2);ctx.fill();ctx.restore();});
+  ctx.restore();
+}
+/* ── Full renderer with memo text ── */
+function renderFull(canvas,drawings,memos){
+  if(!canvas)return;
+  const ctx=canvas.getContext("2d");const s=canvas.width/CW;
+  ctx.clearRect(0,0,canvas.width,canvas.height);ctx.save();ctx.scale(s,s);
+  drawCourt(ctx);
+  drawings.filter(d=>d.type==="cone").forEach(d=>drawCone(ctx,d));
+  drawings.filter(d=>d.type!=="cone"&&d.type!=="player").forEach(d=>renderStroke(ctx,d,true));
+  drawings.filter(d=>d.type==="player").forEach(d=>drawPlayer(ctx,d));
+  memos.forEach(m=>{
+    ctx.save();
+    const txt=m.text||"";const mLines=txt.split("\n");
+    const mw=Math.min(180,Math.max(80,...mLines.map(l=>l.length*13))+20);
+    const mh=mLines.length*18+14;
+    ctx.fillStyle="rgba(0,0,0,0.85)";
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.fill();
+    ctx.strokeStyle=m.color;ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.stroke();
+    ctx.fillStyle=m.color;ctx.font="12px 'Noto Sans JP',sans-serif";ctx.textAlign="left";
+    mLines.forEach((l,i)=>ctx.fillText(l,m.x+6,m.y+14+i*18));
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+const bBtn={padding:"6px 10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:18,color:"#e2e8f0",transition:"all 0.15s"};
+const aBtn={...bBtn,background:"rgba(255,255,255,0.06)"};
+const card={background:"rgba(255,255,255,0.05)",borderRadius:14,padding:20,boxShadow:"0 4px 20px rgba(0,0,0,0.2)"};
+const taStyle={width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"12px 14px",color:"#e2e8f0",fontSize:14,fontFamily:"inherit",lineHeight:1.8,resize:"vertical",outline:"none",minHeight:180};
+const inputStyle={background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,padding:"8px 12px",color:"#e2e8f0",fontSize:14,outline:"none",fontFamily:"inherit"};
+
+const today=()=>new Date().toISOString().slice(0,10);
+
+/* ── Confirm Delete ── */
+function ConfirmDelete({onDelete,label,size}){
+  const [confirming,setConfirming]=useState(false);
+  const sz=size||"normal";
+  if(confirming)return(
+    <div style={{display:"inline-flex",gap:3}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>{onDelete();setConfirming(false);}} style={{background:"rgba(239,68,68,0.3)",border:"1px solid rgba(239,68,68,0.5)",borderRadius:6,color:"#fff",fontSize:sz==="small"?10:11,padding:sz==="small"?"2px 6px":"3px 10px",cursor:"pointer",fontWeight:700}}>本当に削除</button>
+      <button onClick={()=>setConfirming(false)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,color:"#94a3b8",fontSize:sz==="small"?10:11,padding:sz==="small"?"2px 6px":"3px 10px",cursor:"pointer"}}>やめる</button>
+    </div>
+  );
+  return(
+    <button onClick={e=>{e.stopPropagation();setConfirming(true);}} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:6,color:"#ef4444",fontSize:sz==="small"?10:11,padding:sz==="small"?"2px 6px":"3px 10px",cursor:"pointer"}}>{label||"削除"}</button>
+  );
+}
+
+/* ════════════ MAIN APP ════════════ */
+function App(){
+  const [screen,setScreen]=useState("home"); // home | editor | gallery | log | equip
+  const [saved,setSaved]=useState([]);
+  const [logs,setLogs]=useState([]);
+  const [matches,setMatches]=useState([]);
+  const [presets,setPresets]=useState({locations:[],contents:[]});
+  const [equipment,setEquipment]=useState({racket:"",foreRubber:"",backRubber:"",foreDate:"",backDate:"",history:[]});
+  const [serveOrders,setServeOrders]=useState([]);
+  const [editIdx,setEditIdx]=useState(-1); // index in saved for editing
+
+  // Editor state
+  const [title,setTitle]=useState("");
+  const [drawings,setDrawings]=useState([]);
+  const [memos,setMemos]=useState([]);
+  const [notes,setNotes]=useState("");
+  const [editorTab,setEditorTab]=useState("draw");
+
+  const openNew=()=>{setTitle("");setDrawings([]);setMemos([]);setNotes("");setEditIdx(-1);setEditorTab("draw");setScreen("editor");};
+  const openEdit=(i)=>{const t=saved[i];setTitle(t.title);setDrawings(t.drawings);setMemos(t.memos);setNotes(t.notes||"");setEditIdx(i);setEditorTab("draw");setScreen("editor");};
+  const [saveMsg,setSaveMsg]=useState("");
+  const saveCurrent=()=>{
+    const entry={id:Date.now(),title:title||"新しい戦術",drawings:[...drawings],memos:[...memos],notes,date:today()};
+    if(editIdx>=0){setSaved(p=>p.map((s,i)=>i===editIdx?entry:s));}
+    else{setSaved(p=>[entry,...p]);setEditIdx(0);}
+    setSaveMsg("✅ 保存しました");setTimeout(()=>setSaveMsg(""),2000);
+  };
+  const deleteSaved=(i)=>setSaved(p=>p.filter((_,j)=>j!==i));
+
+  const bg={minHeight:"100vh",background:"linear-gradient(135deg,#0f172a,#1e293b,#0f172a)",fontFamily:"'Noto Sans JP','Hiragino Kaku Gothic Pro',sans-serif",color:"#e2e8f0",padding:16};
+
+  return(
+    <div style={bg}>
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet"/>
+
+      {screen==="home"&&<HomeScreen onNew={openNew} onGallery={()=>setScreen("gallery")} onLog={()=>setScreen("log")} onEquip={()=>setScreen("equip")} onMatchHistory={()=>setScreen("matchHistory")} saved={saved} setSaved={setSaved} logs={logs} setLogs={setLogs} matches={matches} setMatches={setMatches} presets={presets} setPresets={setPresets} equipment={equipment} setEquipment={setEquipment} serveOrders={serveOrders} setServeOrders={setServeOrders}/>}
+      {screen==="gallery"&&<GalleryScreen saved={saved} onBack={()=>setScreen("home")} onOpen={openEdit} onDelete={deleteSaved} onServeOrder={()=>setScreen("serve")}/>}
+      {screen==="log"&&<LogScreen logs={logs} setLogs={setLogs} matches={matches} setMatches={setMatches} presets={presets} setPresets={setPresets} onBack={()=>setScreen("home")}/>}
+      {screen==="equip"&&<EquipScreen equipment={equipment} setEquipment={setEquipment} logs={logs} onBack={()=>setScreen("home")}/>}
+      {screen==="serve"&&<ServeOrderScreen saved={saved} serveOrders={serveOrders} setServeOrders={setServeOrders} onBack={()=>setScreen("gallery")}/>}
+      {screen==="matchHistory"&&<MatchHistoryScreen matches={matches} setMatches={setMatches} onBack={()=>setScreen("home")}/>}
+      {screen==="editor"&&(
+        <>
+          {/* Editor header */}
+          <div style={{maxWidth:650,margin:"0 auto 6px",paddingTop:"env(safe-area-inset-top,0px)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:13,padding:"8px 14px",minHeight:40,flexShrink:0}}>← 戻る</button>
+              <input type="text" value={title} onChange={e=>setTitle(e.target.value)}
+                placeholder="タイトルを入力"
+                style={{...inputStyle,flex:1,fontSize:14,fontWeight:700,textAlign:"center",minWidth:0,padding:"8px 10px"}}/>
+            </div>
+          </div>
+          <div style={{maxWidth:650,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
+            {[{id:"draw",lb:"⚡ 図面"},{id:"notes",lb:"📄 戦術ノート"}].map(pg=>(
+              <button key={pg.id} onClick={()=>setEditorTab(pg.id)}
+                style={{...bBtn,fontSize:13,padding:"6px 18px",fontWeight:700,
+                  background:editorTab===pg.id?"rgba(59,130,246,0.45)":"rgba(255,255,255,0.06)",
+                  borderBottom:editorTab===pg.id?"2px solid #3b82f6":"2px solid transparent"}}>
+                {pg.lb}
+              </button>
+            ))}
+          </div>
+          {editorTab==="draw"&&<DrawPage drawings={drawings} setDrawings={setDrawings} memos={memos} setMemos={setMemos}/>}
+          {editorTab==="notes"&&<NotesPage notes={notes} setNotes={setNotes} title={title}/>}
+          <div style={{maxWidth:650,margin:"16px auto 0",display:"flex",flexDirection:"column",gap:8}}>
+            <button onClick={saveCurrent} style={{...aBtn,background:saveMsg?"rgba(34,197,94,0.5)":"rgba(34,197,94,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12,transition:"all 0.3s"}}>{saveMsg||"💾 保存する"}</button>
+            <ShareButton title={title} drawings={drawings} memos={memos} notes={notes}/>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ════════════ HOME ════════════ */
+function calcRubberHours(logs,sinceDate){
+  if(!sinceDate)return 0;
+  return logs.filter(l=>l.date>=sinceDate).reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+}
+function calcRubberHoursPeriod(logs,fromDate,toDate){
+  if(!fromDate)return 0;
+  return logs.filter(l=>l.date>=fromDate&&(!toDate||l.date<toDate)).reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+}
+function HomeScreen({onNew,onGallery,onLog,onEquip,onMatchHistory,saved,setSaved,logs,setLogs,matches,setMatches,presets,setPresets,equipment,setEquipment,serveOrders,setServeOrders}){
+  const totalMin=logs.reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+  const totalH=Math.floor(totalMin/60),totalM=totalMin%60;
+  const foreMin=calcRubberHours(logs,equipment.foreDate);
+  const backMin=calcRubberHours(logs,equipment.backDate);
+  const hasEquip=equipment.racket||equipment.foreRubber||equipment.backRubber;
+  const fileRef=useRef(null);
+  const [importMsg,setImportMsg]=useState("");
+
+  const exportData=()=>{
+    const data={saved,logs,matches,presets,equipment,serveOrders,exportDate:today(),version:2};
+    const json=JSON.stringify(data,null,2);
+    const blob=new Blob([json],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=`卓球ノート_${today()}.json`;a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData=(e)=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(data.saved)setSaved(data.saved);
+        if(data.logs)setLogs(data.logs);
+        if(data.matches)setMatches(data.matches);
+        if(data.presets)setPresets(data.presets);
+        if(data.equipment)setEquipment(data.equipment);
+        if(data.serveOrders)setServeOrders(data.serveOrders);
+        setImportMsg("✅ データを読み込みました");
+        setTimeout(()=>setImportMsg(""),3000);
+      }catch(err){
+        setImportMsg("❌ ファイルの読み込みに失敗しました");
+        setTimeout(()=>setImportMsg(""),3000);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value="";
+  };
+
+  return(
+    <div style={{maxWidth:600,margin:"0 auto"}}>
+      <div style={{textAlign:"center",padding:"32px 0 24px"}}>
+        <div style={{fontSize:48,marginBottom:8}}>🏓</div>
+        <h1 style={{fontSize:30,fontWeight:900,margin:0,background:"linear-gradient(90deg,#22c55e,#3b82f6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>卓球戦術ノート</h1>
+        <p style={{color:"#64748b",fontSize:14,margin:"8px 0 0"}}>戦術メモ・練習記録をまとめて管理</p>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+        {[
+          {label:"戦術メモ",value:`${saved.length}件`,icon:"📋"},
+          {label:"練習記録",value:`${logs.length}日`,icon:"📅"},
+          {label:"練習時間",value:`${totalH}h ${totalM}m`,icon:"⏱️"},
+        ].map(s=>(
+          <div key={s.label} style={{...card,textAlign:"center",padding:16}}>
+            <div style={{fontSize:22}}>{s.icon}</div>
+            <div style={{fontSize:20,fontWeight:900,margin:"4px 0"}}>{s.value}</div>
+            <div style={{fontSize:11,color:"#64748b"}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Equipment / Rubber usage */}
+      {hasEquip&&(
+        <div style={{...card,padding:16,marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:14,fontWeight:700}}>🏓 使用中の用具</div>
+            <button onClick={onEquip} style={{...aBtn,fontSize:11,padding:"3px 10px"}}>変更</button>
+          </div>
+          {equipment.racket&&<div style={{fontSize:13,color:"#cbd5e1",marginBottom:8}}>ラケット: <strong>{equipment.racket}</strong></div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {equipment.foreRubber&&(
+              <div style={{padding:10,borderRadius:10,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)"}}>
+                <div style={{fontSize:11,color:"#3b82f6",fontWeight:700,marginBottom:2}}>フォア面</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{equipment.foreRubber}</span>
+                  {equipment.foreThickness&&equipment.foreThickness!=="other"&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(59,130,246,0.2)",color:"#93c5fd"}}>{equipment.foreThickness}</span>}
+                </div>
+                {equipment.foreDate?(
+                  <div>
+                    <div style={{fontSize:11,color:"#64748b"}}>{equipment.foreDate} 〜</div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#3b82f6",marginTop:2}}>
+                      {Math.floor(foreMin/60)}<span style={{fontSize:11,fontWeight:400}}>h</span>
+                      {foreMin%60>0&&<>{" "}{foreMin%60}<span style={{fontSize:11,fontWeight:400}}>m</span></>}
+                      <span style={{fontSize:11,fontWeight:400,color:"#64748b"}}> 使用</span>
+                    </div>
+                  </div>
+                ):<div style={{fontSize:11,color:"#475569"}}>変更日未設定</div>}
+              </div>
+            )}
+            {equipment.backRubber&&(
+              <div style={{padding:10,borderRadius:10,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)"}}>
+                <div style={{fontSize:11,color:"#ef4444",fontWeight:700,marginBottom:2}}>バック面</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
+                  <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{equipment.backRubber}</span>
+                  {equipment.backThickness&&equipment.backThickness!=="other"&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"rgba(239,68,68,0.2)",color:"#fca5a5"}}>{equipment.backThickness}</span>}
+                </div>
+                {equipment.backDate?(
+                  <div>
+                    <div style={{fontSize:11,color:"#64748b"}}>{equipment.backDate} 〜</div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#ef4444",marginTop:2}}>
+                      {Math.floor(backMin/60)}<span style={{fontSize:11,fontWeight:400}}>h</span>
+                      {backMin%60>0&&<>{" "}{backMin%60}<span style={{fontSize:11,fontWeight:400}}>m</span></>}
+                      <span style={{fontSize:11,fontWeight:400,color:"#64748b"}}> 使用</span>
+                    </div>
+                  </div>
+                ):<div style={{fontSize:11,color:"#475569"}}>変更日未設定</div>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Menu buttons */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <button onClick={onNew} style={{...card,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:14,padding:18,textAlign:"left",color:"#e2e8f0",fontSize:16,fontWeight:700,background:"linear-gradient(135deg,rgba(34,197,94,0.15),rgba(59,130,246,0.15))"}}>
+          <span style={{fontSize:28}}>✏️</span>
+          <div><div>新しい戦術メモを作成</div><div style={{fontSize:12,fontWeight:400,color:"#64748b",marginTop:2}}>図面と戦術ノートで戦術を記録</div></div>
+        </button>
+        <button onClick={onGallery} style={{...card,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:14,padding:18,textAlign:"left",color:"#e2e8f0",fontSize:16,fontWeight:700}}>
+          <span style={{fontSize:28}}>📋</span>
+          <div><div>戦術メモ一覧</div><div style={{fontSize:12,fontWeight:400,color:"#64748b",marginTop:2}}>保存した{saved.length}件の戦術を確認・編集</div></div>
+        </button>
+        <button onClick={onLog} style={{...card,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:14,padding:18,textAlign:"left",color:"#e2e8f0",fontSize:16,fontWeight:700}}>
+          <span style={{fontSize:28}}>📅</span>
+          <div><div>練習日誌</div><div style={{fontSize:12,fontWeight:400,color:"#64748b",marginTop:2}}>日々の練習時間・内容を記録</div></div>
+        </button>
+        <button onClick={onMatchHistory} style={{...card,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:14,padding:18,textAlign:"left",color:"#e2e8f0",fontSize:16,fontWeight:700}}>
+          <span style={{fontSize:28}}>🏆</span>
+          <div><div>試合記録一覧</div><div style={{fontSize:12,fontWeight:400,color:"#64748b",marginTop:2}}>過去の試合結果を確認・振り返り</div></div>
+        </button>
+        <button onClick={onEquip} style={{...card,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:14,padding:18,textAlign:"left",color:"#e2e8f0",fontSize:16,fontWeight:700}}>
+          <span style={{fontSize:28}}>🏓</span>
+          <div><div>用具管理</div><div style={{fontSize:12,fontWeight:400,color:"#64748b",marginTop:2}}>ラケット・ラバーの記録と使用時間の管理</div></div>
+        </button>
+      </div>
+
+      {/* Data export/import */}
+      <div style={{marginTop:20,...card,padding:16}}>
+        <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>💾 データ管理</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={exportData} style={{...aBtn,flex:1,fontSize:13,padding:"10px 12px",fontWeight:700,background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.3)",minHeight:42}}>
+            📤 保存
+          </button>
+          <button onClick={()=>fileRef.current?.click()} style={{...aBtn,flex:1,fontSize:13,padding:"10px 12px",fontWeight:700,background:"rgba(34,197,94,0.2)",border:"1px solid rgba(34,197,94,0.3)",minHeight:42}}>
+            📥 読み込み
+          </button>
+          <input ref={fileRef} type="file" accept=".json" onChange={importData} style={{display:"none"}}/>
+        </div>
+        {importMsg&&<div style={{marginTop:8,fontSize:13,textAlign:"center",fontWeight:700}}>{importMsg}</div>}
+        <div style={{fontSize:11,color:"#475569",marginTop:8,textAlign:"center"}}>保存でデータをJSONファイルに書き出し、読み込みで別の端末に復元できます</div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════ EQUIPMENT ════════════ */
+function EquipScreen({equipment,setEquipment,logs,onBack}){
+  const [racket,setRacket]=useState(equipment.racket||"");
+  const [racketNotes,setRacketNotes]=useState(equipment.racketNotes||"");
+  const [foreRubber,setForeRubber]=useState(equipment.foreRubber||"");
+  const [backRubber,setBackRubber]=useState(equipment.backRubber||"");
+  const [foreDate,setForeDate]=useState(equipment.foreDate||today());
+  const [backDate,setBackDate]=useState(equipment.backDate||today());
+  const [foreThickness,setForeThickness]=useState(equipment.foreThickness||"");
+  const [backThickness,setBackThickness]=useState(equipment.backThickness||"");
+  const [foreNotes,setForeNotes]=useState(equipment.foreNotes||"");
+  const [backNotes,setBackNotes]=useState(equipment.backNotes||"");
+  const [tab,setTab]=useState("current"); // "current" | "history"
+
+  const foreMin=calcRubberHours(logs,equipment.foreDate);
+  const backMin=calcRubberHours(logs,equipment.backDate);
+  const [saved,setSaved]=useState(false);
+
+  const fmtMin=(m)=>{const h=Math.floor(m/60),mm=m%60;return h>0?(mm>0?`${h}h ${mm}m`:`${h}h`):(mm>0?`${mm}m`:"0m");};
+  const fmtDays=(from,to)=>{if(!from||!to)return"";const a=new Date(from+"T00:00:00"),b=new Date(to+"T00:00:00");const d=Math.round((b-a)/(1000*60*60*24));return d>=0?`${d}日間`:"";};
+
+  const saveEquip=()=>{
+    setEquipment(prev=>{
+      const hist=[...(prev.history||[])];
+      // Racket changed
+      if(racket!==prev.racket&&prev.racket){
+        hist.unshift({side:"ラケット",rubber:prev.racket,from:prev.racketDate||prev.foreDate||"不明",to:today(),usedMin:0,type:"racket"});
+      }
+      // Fore: name OR date changed
+      const foreChanged=(foreRubber!==prev.foreRubber||foreDate!==prev.foreDate)&&prev.foreRubber;
+      if(foreChanged){
+        const endDate=foreDate!==prev.foreDate?foreDate:today();
+        hist.unshift({side:"フォア",rubber:prev.foreRubber,from:prev.foreDate||"不明",to:endDate,usedMin:calcRubberHoursPeriod(logs,prev.foreDate,endDate)});
+      }
+      // Back: name OR date changed
+      const backChanged=(backRubber!==prev.backRubber||backDate!==prev.backDate)&&prev.backRubber;
+      if(backChanged){
+        const endDate=backDate!==prev.backDate?backDate:today();
+        hist.unshift({side:"バック",rubber:prev.backRubber,from:prev.backDate||"不明",to:endDate,usedMin:calcRubberHoursPeriod(logs,prev.backDate,endDate)});
+      }
+      return{racket,racketNotes,foreRubber,backRubber,foreDate,backDate,foreThickness:foreThickness==="other"?"":foreThickness,backThickness:backThickness==="other"?"":backThickness,foreNotes,backNotes,racketDate:racket!==prev.racket?today():(prev.racketDate||today()),history:hist.slice(0,50)};
+    });
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  };
+
+  const deleteHistory=(idx)=>{
+    setEquipment(prev=>({...prev,history:(prev.history||[]).filter((_,i)=>i!==idx)}));
+  };
+
+  const history=equipment.history||[];
+
+  return(
+    <div style={{maxWidth:600,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,paddingTop:8}}>
+        <button onClick={onBack} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>🏓 用具管理</h2>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
+        <button onClick={()=>setTab("current")}
+          style={{...bBtn,fontSize:13,padding:"8px 18px",fontWeight:700,flex:1,
+            background:tab==="current"?"rgba(34,197,94,0.3)":"rgba(255,255,255,0.06)",
+            borderBottom:tab==="current"?"2px solid #22c55e":"2px solid transparent"}}>
+          🏓 現在の用具
+        </button>
+        <button onClick={()=>setTab("history")}
+          style={{...bBtn,fontSize:13,padding:"8px 18px",fontWeight:700,flex:1,
+            background:tab==="history"?"rgba(139,92,246,0.25)":"rgba(255,255,255,0.06)",
+            borderBottom:tab==="history"?"2px solid #a78bfa":"2px solid transparent"}}>
+          📜 変更履歴{history.length>0&&` (${history.length})`}
+        </button>
+      </div>
+
+      {/* ── Current tab ── */}
+      {tab==="current"&&(<>
+        {/* Current usage stats */}
+        {(equipment.foreRubber||equipment.backRubber)&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+            {equipment.foreRubber&&(
+              <div style={{...card,padding:14,borderLeft:"3px solid #3b82f6"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:11,color:"#3b82f6",fontWeight:700}}>フォア面</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,margin:"4px 0"}}>
+                      <span style={{fontSize:16,fontWeight:700,color:"#e2e8f0"}}>{equipment.foreRubber}</span>
+                      {equipment.foreThickness&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(59,130,246,0.15)",color:"#93c5fd"}}>{equipment.foreThickness}</span>}
+                    </div>
+                    {equipment.foreDate&&<div style={{fontSize:11,color:"#64748b"}}>{equipment.foreDate} 〜 ({fmtDays(equipment.foreDate,today())})</div>}
+                    {equipment.foreNotes&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{equipment.foreNotes}</div>}
+                  </div>
+                  {equipment.foreDate&&(
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:24,fontWeight:900,color:"#3b82f6"}}>{fmtMin(foreMin)}</div>
+                      <div style={{fontSize:10,color:"#475569"}}>使用時間</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {equipment.backRubber&&(
+              <div style={{...card,padding:14,borderLeft:"3px solid #ef4444"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:11,color:"#ef4444",fontWeight:700}}>バック面</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,margin:"4px 0"}}>
+                      <span style={{fontSize:16,fontWeight:700,color:"#e2e8f0"}}>{equipment.backRubber}</span>
+                      {equipment.backThickness&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(239,68,68,0.15)",color:"#fca5a5"}}>{equipment.backThickness}</span>}
+                    </div>
+                    {equipment.backDate&&<div style={{fontSize:11,color:"#64748b"}}>{equipment.backDate} 〜 ({fmtDays(equipment.backDate,today())})</div>}
+                    {equipment.backNotes&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{equipment.backNotes}</div>}
+                  </div>
+                  {equipment.backDate&&(
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:24,fontWeight:900,color:"#ef4444"}}>{fmtMin(backMin)}</div>
+                      <div style={{fontSize:10,color:"#475569"}}>使用時間</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Edit form */}
+        <div style={{...card,marginBottom:16}}>
+          <div style={{fontSize:15,fontWeight:700,marginBottom:14}}>用具を設定</div>
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
+            <span style={{fontSize:12,color:"#94a3b8"}}>🏓 ラケット</span>
+            <input type="text" value={racket} onChange={e=>setRacket(e.target.value)} style={inputStyle} placeholder="例: インナーフォース レイヤー ALC"/>
+          </label>
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+            <span style={{fontSize:11,color:"#94a3b8"}}>ラケット備考</span>
+            <input type="text" value={racketNotes} onChange={e=>setRacketNotes(e.target.value)} style={inputStyle} placeholder="例: FL、90g、弾みが強い"/>
+          </label>
+          <div style={{padding:12,borderRadius:10,background:"rgba(59,130,246,0.05)",border:"1px solid rgba(59,130,246,0.15)",marginBottom:10}}>
+            <div style={{fontSize:12,color:"#3b82f6",fontWeight:700,marginBottom:8}}>フォア面</div>
+            <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>ラバー名</span>
+              <input type="text" value={foreRubber} onChange={e=>setForeRubber(e.target.value)} style={inputStyle} placeholder="例: テナジー05"/>
+            </label>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <label style={{display:"flex",flexDirection:"column",gap:4,flex:1}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>厚さ</span>
+                <select value={["極薄","薄","中","厚","特厚","MAX",""].includes(foreThickness)?foreThickness:"other"} onChange={e=>{if(e.target.value==="other")setForeThickness("other");else setForeThickness(e.target.value);}} style={inputStyle}>
+                  <option value="">選択</option>
+                  <option value="極薄">極薄</option>
+                  <option value="薄">薄</option>
+                  <option value="中">中</option>
+                  <option value="厚">厚</option>
+                  <option value="特厚">特厚</option>
+                  <option value="MAX">MAX</option>
+                  <option value="other">その他</option>
+                </select>
+                {!["極薄","薄","中","厚","特厚","MAX",""].includes(foreThickness)&&(
+                  <input type="text" value={foreThickness==="other"?"":foreThickness} onChange={e=>setForeThickness(e.target.value||"other")}
+                    style={{...inputStyle,marginTop:4,fontSize:12}} placeholder="厚さを入力"/>
+                )}
+              </label>
+              <label style={{display:"flex",flexDirection:"column",gap:4,flex:1}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>貼り替え日</span>
+                <input type="date" value={foreDate} onChange={e=>setForeDate(e.target.value)} style={inputStyle}/>
+              </label>
+            </div>
+            <label style={{display:"flex",flexDirection:"column",gap:4}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>備考</span>
+              <input type="text" value={foreNotes} onChange={e=>setForeNotes(e.target.value)} style={inputStyle} placeholder="例: 回転重視、少しへたり気味"/>
+            </label>
+          </div>
+          <div style={{padding:12,borderRadius:10,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)",marginBottom:14}}>
+            <div style={{fontSize:12,color:"#ef4444",fontWeight:700,marginBottom:8}}>バック面</div>
+            <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>ラバー名</span>
+              <input type="text" value={backRubber} onChange={e=>setBackRubber(e.target.value)} style={inputStyle} placeholder="例: ファスターク G-1"/>
+            </label>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <label style={{display:"flex",flexDirection:"column",gap:4,flex:1}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>厚さ</span>
+                <select value={["極薄","薄","中","厚","特厚","MAX",""].includes(backThickness)?backThickness:"other"} onChange={e=>{if(e.target.value==="other")setBackThickness("other");else setBackThickness(e.target.value);}} style={inputStyle}>
+                  <option value="">選択</option>
+                  <option value="極薄">極薄</option>
+                  <option value="薄">薄</option>
+                  <option value="中">中</option>
+                  <option value="厚">厚</option>
+                  <option value="特厚">特厚</option>
+                  <option value="MAX">MAX</option>
+                  <option value="other">その他</option>
+                </select>
+                {!["極薄","薄","中","厚","特厚","MAX",""].includes(backThickness)&&(
+                  <input type="text" value={backThickness==="other"?"":backThickness} onChange={e=>setBackThickness(e.target.value||"other")}
+                    style={{...inputStyle,marginTop:4,fontSize:12}} placeholder="厚さを入力"/>
+                )}
+              </label>
+              <label style={{display:"flex",flexDirection:"column",gap:4,flex:1}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>貼り替え日</span>
+                <input type="date" value={backDate} onChange={e=>setBackDate(e.target.value)} style={inputStyle}/>
+              </label>
+            </div>
+            <label style={{display:"flex",flexDirection:"column",gap:4}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>備考</span>
+              <input type="text" value={backNotes} onChange={e=>setBackNotes(e.target.value)} style={inputStyle} placeholder="例: ブロック用、安定感重視"/>
+            </label>
+          </div>
+          <button onClick={saveEquip} style={{...aBtn,background:saved?"rgba(34,197,94,0.5)":"rgba(34,197,94,0.3)",fontSize:14,padding:"10px 20px",fontWeight:700,width:"100%",minHeight:44,transition:"all 0.3s"}}>{saved?"✅ 保存しました":"💾 保存する"}</button>
+          <div style={{fontSize:11,color:"#475569",textAlign:"center",marginTop:8}}>※ ラバー名や貼り替え日を変更して保存すると履歴タブに記録されます</div>
+        </div>
+      </>)}
+
+      {/* ── History tab ── */}
+      {tab==="history"&&(<>
+        {history.length===0?(
+          <div style={{...card,textAlign:"center",padding:40}}>
+            <div style={{fontSize:40,marginBottom:10}}>📜</div>
+            <div style={{color:"#64748b",fontSize:14}}>変更履歴はまだありません</div>
+            <div style={{color:"#475569",fontSize:12,marginTop:6}}>用具の名前や貼り替え日を変更して保存すると<br/>ここに自動で記録されます</div>
+          </div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {history.map((h,i)=>{
+              const isRacket=h.type==="racket"||h.side==="ラケット";
+              const clr=isRacket?"#a78bfa":h.side==="フォア"?"#3b82f6":"#ef4444";
+              const bg2=isRacket?"rgba(139,92,246,0.08)":h.side==="フォア"?"rgba(59,130,246,0.08)":"rgba(239,68,68,0.08)";
+              const borderClr=isRacket?"rgba(139,92,246,0.3)":h.side==="フォア"?"rgba(59,130,246,0.3)":"rgba(239,68,68,0.3)";
+              const days=fmtDays(h.from,h.to);
+              return(
+              <div key={i} style={{...card,padding:14,borderLeft:`3px solid ${clr}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:11,padding:"2px 10px",borderRadius:6,fontWeight:700,background:bg2,color:clr,border:`1px solid ${borderClr}`}}>{h.side}</span>
+                    <span style={{fontSize:15,fontWeight:700,color:"#e2e8f0"}}>{h.rubber}</span>
+                  </div>
+                  <ConfirmDelete onDelete={()=>deleteHistory(i)} size="small"/>
+                </div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12}}>
+                  <div style={{color:"#94a3b8"}}>
+                    📅 <span style={{color:"#cbd5e1"}}>{h.from||"?"} 〜 {h.to||"?"}</span>
+                    {days&&<span style={{color:"#64748b"}}> ({days})</span>}
+                  </div>
+                  {!isRacket&&(
+                    <div style={{color:"#94a3b8"}}>
+                      ⏱️ <span style={{color:"#cbd5e1",fontWeight:700}}>{fmtMin(h.usedMin||0)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>);
+            })}
+          </div>
+        )}
+      </>)}
+    </div>
+  );
+}
+
+/* ════════════ GALLERY ════════════ */
+function GalleryScreen({saved,onBack,onOpen,onDelete,onServeOrder}){
+  return(
+    <div style={{maxWidth:700,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingTop:8}}>
+        <button onClick={onBack} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>📋 戦術メモ一覧</h2>
+        <span style={{fontSize:13,color:"#64748b"}}>{saved.length}件</span>
+      </div>
+      {/* Serve order button */}
+      <button onClick={onServeOrder} style={{...card,border:"1px solid rgba(234,179,8,0.3)",cursor:"pointer",display:"flex",alignItems:"center",gap:12,padding:14,textAlign:"left",color:"#e2e8f0",fontSize:14,fontWeight:700,width:"100%",marginBottom:16,background:"rgba(234,179,8,0.08)"}}>
+        <span style={{fontSize:24}}>🎯</span>
+        <div><div style={{color:"#eab308"}}>サーブ順管理</div><div style={{fontSize:11,fontWeight:400,color:"#64748b",marginTop:2}}>戦術メモからサーブの順番を組み立てる</div></div>
+      </button>
+      {saved.length===0?(
+        <div style={{...card,textAlign:"center",padding:40}}>
+          <div style={{fontSize:40,marginBottom:10}}>📝</div>
+          <div style={{color:"#64748b"}}>まだ戦術メモがありません</div>
+          <div style={{color:"#475569",fontSize:12,marginTop:4}}>ホームから新規作成してください</div>
+        </div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {saved.map((t,i)=>(
+            <TacticsCard key={t.id} t={t} onOpen={()=>onOpen(i)} onDelete={()=>onDelete(i)}/>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TacticsCard({t,onOpen,onDelete}){
+  const cvRef=useRef(null);
+  const [sharing,setSharing]=useState(false);
+  useEffect(()=>{renderThumb(cvRef.current,t.drawings,t.memos);},[t]);
+
+  const shareCard=async(e)=>{
+    e.stopPropagation();
+    setSharing(true);
+    try{
+      const img=generateShareImage(t.title,t.drawings,t.memos,t.notes);
+      const blob=await new Promise(r=>img.toBlob(r,"image/png"));
+      const file=new File([blob],(t.title||"戦術メモ")+".png",{type:"image/png"});
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({title:t.title||"戦術メモ",files:[file]});
+      }else{
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement("a");a.href=url;a.download=(t.title||"戦術メモ")+".png";a.click();
+        URL.revokeObjectURL(url);
+      }
+    }catch(e){if(e.name!=="AbortError")console.error(e);}
+    setSharing(false);
+  };
+
+  return(
+    <div style={{...card,padding:0,overflow:"hidden",cursor:"pointer"}} onClick={onOpen}>
+      <canvas ref={cvRef} width={200} height={260} style={{width:"100%",height:160,objectFit:"cover",display:"block",background:"#0d1117"}}/>
+      <div style={{padding:"10px 12px"}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+        <div style={{fontSize:11,color:"#64748b",display:"flex",gap:8}}>
+          <span>{t.date}</span>
+          <span>{t.drawings.length}描画</span>
+          <span>{t.memos.length}メモ</span>
+        </div>
+        {t.notes&&<div style={{fontSize:11,color:"#475569",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes.slice(0,40)}...</div>}
+      </div>
+      <div style={{padding:"0 12px 10px",display:"flex",justifyContent:"flex-end",gap:6}}>
+        <button onClick={shareCard} disabled={sharing}
+          style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:6,color:"#3b82f6",fontSize:11,padding:"3px 10px",cursor:"pointer"}}>
+          {sharing?"⏳":"📤 共有"}
+        </button>
+        <ConfirmDelete onDelete={onDelete}/>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════ PRACTICE LOG ════════════ */
+function LogScreen({logs,setLogs,matches,setMatches,presets,setPresets,onBack}){
+  const [calYear,setCalYear]=useState(()=>new Date().getFullYear());
+  const [calMonth,setCalMonth]=useState(()=>new Date().getMonth());
+  const [view,setView]=useState("calendar"); // "calendar" | "day"
+  const [viewDate,setViewDate]=useState(null);
+
+  const openDay=(ds)=>{setViewDate(ds);setView("day");};
+  const backToCal=()=>{setView("calendar");setViewDate(null);};
+
+  const logMap={};
+  logs.forEach((l,i)=>{if(!logMap[l.date])logMap[l.date]=[];logMap[l.date].push({...l,_idx:i});});
+  const matchMap={};
+  matches.forEach((m,i)=>{if(!matchMap[m.date])matchMap[m.date]=[];matchMap[m.date].push({...m,_idx:i});});
+
+  const monthKey=(y,m)=>`${y}-${String(m+1).padStart(2,"0")}`;
+  const curMonthKey=monthKey(calYear,calMonth);
+  const monthLogs=logs.filter(l=>l.date?.startsWith(curMonthKey));
+  const monthMin=monthLogs.reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+  const monthDays=new Set(monthLogs.map(l=>l.date)).size;
+  const totalMin=logs.reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const firstDow=new Date(calYear,calMonth,1).getDay();
+  const weeks=[];let week=new Array(firstDow).fill(null);
+  for(let d=1;d<=daysInMonth;d++){week.push(d);if(week.length===7){weeks.push(week);week=[];}}
+  if(week.length>0){while(week.length<7)week.push(null);weeks.push(week);}
+
+  const prevMonth=()=>{if(calMonth===0){setCalYear(y=>y-1);setCalMonth(11);}else setCalMonth(m=>m-1);};
+  const nextMonth=()=>{if(calMonth===11){setCalYear(y=>y+1);setCalMonth(0);}else setCalMonth(m=>m+1);};
+  const dayStr=(d)=>`${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const todayStr=today();
+  const monthNames=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+
+  if(view==="day"&&viewDate){
+    return <DayView date={viewDate} logs={logs} setLogs={setLogs} logMap={logMap} matches={matches} setMatches={setMatches} matchMap={matchMap} presets={presets} setPresets={setPresets} onBack={backToCal}/>;
+  }
+
+  return(
+    <div style={{maxWidth:700,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingTop:8}}>
+        <button onClick={onBack} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>📅 練習日誌</h2>
+      </div>
+
+      {/* Calendar */}
+      <div style={{...card,marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <button onClick={prevMonth} style={{...aBtn,fontSize:16,padding:"4px 12px"}}>◀</button>
+          <div style={{fontSize:17,fontWeight:900}}>{calYear}年 {monthNames[calMonth]}</div>
+          <button onClick={nextMonth} style={{...aBtn,fontSize:16,padding:"4px 12px"}}>▶</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+          {["日","月","火","水","木","金","土"].map((d,i)=>(
+            <div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,padding:"4px 0",
+              color:i===0?"#ef4444":i===6?"#3b82f6":"#64748b"}}>{d}</div>
+          ))}
+        </div>
+        {weeks.map((wk,wi)=>(
+          <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+            {wk.map((d,di)=>{
+              if(d===null)return <div key={di}/>;
+              const ds=dayStr(d);
+              const hasLog=!!logMap[ds];
+              const hasMatch=!!matchMap[ds];
+              const isToday=ds===todayStr;
+              const dayLogs=logMap[ds]||[];
+              const dayMin=dayLogs.reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+              const cond=dayLogs.length>0?dayLogs[0].condition:null;
+              return(
+                <div key={di} onClick={()=>openDay(ds)}
+                  style={{textAlign:"center",padding:"6px 2px",borderRadius:8,cursor:"pointer",position:"relative",minHeight:46,
+                    background:isToday?"rgba(34,197,94,0.12)":"transparent",
+                    border:isToday?"1px solid rgba(34,197,94,0.4)":"1px solid transparent",
+                    transition:"all 0.15s"}}>
+                  <div style={{fontSize:13,fontWeight:isToday?900:(hasLog||hasMatch)?700:400,
+                    color:di===0?"#ef4444":di===6?"#3b82f6":(hasLog||hasMatch)?"#e2e8f0":"#475569"}}>{d}</div>
+                  {hasLog&&(<div style={{marginTop:2}}>
+                    <div style={{fontSize:9,color:"#94a3b8"}}>{Math.floor(dayMin/60)}h{dayMin%60>0?`${dayMin%60}m`:""}</div>
+                    {cond&&<div style={{fontSize:10,marginTop:1}}>{cond}</div>}
+                  </div>)}
+                  <div style={{position:"absolute",bottom:3,left:"50%",transform:"translateX(-50%)",display:"flex",gap:3}}>
+                    {hasLog&&<div style={{width:5,height:5,borderRadius:"50%",background:"#22c55e"}}/>}
+                    {hasMatch&&<div style={{width:5,height:5,borderRadius:"50%",background:"#eab308"}}/>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Monthly summary */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:16}}>
+        <div style={{...card,padding:"10px 12px",textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#64748b"}}>今月の練習日数</div>
+          <div style={{fontSize:20,fontWeight:900}}>{monthDays}<span style={{fontSize:12,fontWeight:400}}>日</span></div>
+        </div>
+        <div style={{...card,padding:"10px 12px",textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#64748b"}}>今月の練習時間</div>
+          <div style={{fontSize:20,fontWeight:900}}>{Math.floor(monthMin/60)}<span style={{fontSize:12,fontWeight:400}}>h</span>{monthMin%60>0&&<>{" "}{monthMin%60}<span style={{fontSize:12,fontWeight:400}}>m</span></>}</div>
+        </div>
+        <div style={{...card,padding:"10px 12px",textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#64748b"}}>累計練習時間</div>
+          <div style={{fontSize:20,fontWeight:900}}>{Math.floor(totalMin/60)}<span style={{fontSize:12,fontWeight:400}}>h</span>{totalMin%60>0&&<>{" "}{totalMin%60}<span style={{fontSize:12,fontWeight:400}}>m</span></>}</div>
+        </div>
+      </div>
+
+      {/* Month log list */}
+      <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>📌 {calYear}年{monthNames[calMonth]}の記録</div>
+      {monthLogs.length===0?(
+        <div style={{...card,textAlign:"center",padding:24,color:"#64748b",fontSize:14}}>この月の記録はありません</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {monthLogs.map(l=>{const idx=logs.indexOf(l);return(
+            <div key={l.id} onClick={()=>openDay(l.date)}
+              style={{...card,padding:14,cursor:"pointer",transition:"all 0.15s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:20}}>{l.condition||"😊"}</span>
+                <span style={{fontWeight:700,fontSize:14}}>{l.date}</span>
+                <span style={{fontSize:13,color:"#94a3b8"}}>{l.hours||0}h {l.minutes||0}m</span>
+                {l.location&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:8,background:"rgba(139,92,246,0.12)",color:"#a78bfa",border:"1px solid rgba(139,92,246,0.2)"}}>📍 {l.location}</span>}
+              </div>
+              {l.content&&<div style={{fontSize:13,color:"#cbd5e1",whiteSpace:"pre-wrap",lineHeight:1.7,marginTop:4,
+                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{l.content}</div>}
+            </div>
+          );})}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════ DAY VIEW ════════════ */
+const RUBBER_TYPES=["裏ソフト","表ソフト","粒高","アンチ","一枚","なし"];
+const RACKET_TYPES=["シェーク","日ペン","中ペン"];
+const defEquip=()=>({racketType:"シェーク",foreRubber:"裏ソフト",backRubber:"裏ソフト"});
+const emptyMatch=()=>({id:Date.now(),opponent:"",opponent2:"",partner:"",isDoubles:false,games:[{self:0,opp:0}],result:"win",equipment:defEquip(),opponentEquip:defEquip(),partnerEquip:defEquip(),opponent2Equip:defEquip(),notes:""});
+
+function DayView({date,logs,setLogs,logMap,matches,setMatches,matchMap,presets,setPresets,onBack}){
+  const dayLogs=logMap[date]||[];
+  const dayMatches=matchMap[date]||[];
+  const [tab,setTab]=useState("practice");
+
+  // Practice form
+  const [hours,setHours]=useState(1);
+  const [minutes,setMinutes]=useState(0);
+  const [content,setContent]=useState("");
+  const [condition,setCondition]=useState("😊");
+  const [location,setLocation]=useState("");
+  const [editLogIdx,setEditLogIdx]=useState(-1);
+  const [showPresetMgr,setShowPresetMgr]=useState(false);
+  const [newLocPreset,setNewLocPreset]=useState("");
+  const [newContentPreset,setNewContentPreset]=useState("");
+
+  // Match form
+  const [matchList,setMatchList]=useState([emptyMatch()]);
+  const [editMatchIdx,setEditMatchIdx]=useState(-1);
+  const [showForm,setShowForm]=useState(true);
+
+  const addLog=()=>{
+    const entry={id:Date.now(),date,hours:Number(hours),minutes:Number(minutes),content,condition,location};
+    if(editLogIdx>=0){setLogs(p=>p.map((l,i)=>i===editLogIdx?entry:l));setEditLogIdx(-1);}
+    else{setLogs(p=>[entry,...p]);onBack();}
+    setContent("");setHours(1);setMinutes(0);setCondition("😊");setLocation("");
+  };
+  const startEditLog=(idx)=>{const l=logs[idx];setHours(l.hours);setMinutes(l.minutes);setContent(l.content);setCondition(l.condition||"😊");setLocation(l.location||"");setEditLogIdx(idx);setTab("practice");};
+  const deleteLog=(idx)=>{setLogs(p=>p.filter((_,j)=>j!==idx));if(editLogIdx===idx)setEditLogIdx(-1);};
+
+  // Match helpers
+  const updateMatch=(listIdx,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,[field]:val}:m));
+  const updateEquip=(listIdx,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,equipment:{...m.equipment,[field]:val}}:m));
+  const updateOpponentEquip=(listIdx,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,opponentEquip:{...(m.opponentEquip||defEquip()),[field]:val}}:m));
+  const updatePartnerEquip=(listIdx,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,partnerEquip:{...(m.partnerEquip||defEquip()),[field]:val}}:m));
+  const updateOpp2Equip=(listIdx,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,opponent2Equip:{...(m.opponent2Equip||defEquip()),[field]:val}}:m));
+  const addGame=(listIdx)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,games:[...m.games,{self:0,opp:0}]}:m));
+  const removeGame=(listIdx,gi)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,games:m.games.filter((_,j)=>j!==gi)}:m));
+  const updateGame=(listIdx,gi,field,val)=>setMatchList(p=>p.map((m,i)=>i===listIdx?{...m,games:m.games.map((g,j)=>j===gi?{...g,[field]:Number(val)||0}:g)}:m));
+  const addMatchSlot=()=>setMatchList(p=>[...p,emptyMatch()]);
+  const removeMatchSlot=(listIdx)=>setMatchList(p=>p.filter((_,i)=>i!==listIdx));
+
+  const saveAllMatches=()=>{
+    const valid=matchList.filter(m=>m.opponent.trim());
+    if(!valid.length)return;
+    const entries=valid.map(m=>({...m,id:Date.now()+Math.random(),date}));
+    if(editMatchIdx>=0){
+      // Replace all dayMatches
+      const dayIds=new Set(dayMatches.map(dm=>dm.id));
+      setMatches(p=>[...p.filter(m=>!dayIds.has(m.id)),...entries]);
+      setEditMatchIdx(-1);
+    } else {
+      setMatches(p=>[...entries,...p]);
+    }
+    setMatchList([emptyMatch()]);setShowForm(false);
+  };
+  const startEditAllDayMatches=()=>{
+    if(dayMatches.length===0)return;
+    setMatchList(dayMatches.map(m=>({...m,games:m.games||[{self:0,opp:0}],equipment:m.equipment||{foreRubber:"裏ソフト",backRubber:"裏ソフト",racket:""}})));
+    setEditMatchIdx(0);setShowForm(true);setTab("match");
+  };
+  const deleteDayMatch=(idx)=>{setMatches(p=>p.filter((_,j)=>j!==idx));};
+
+  const calcResult=(games)=>{const w=games.filter(g=>g.self>g.opp).length,l=games.filter(g=>g.self<g.opp).length;return w>l?"win":l>w?"lose":"draw";};
+  const scoreStr=(games)=>games.map(g=>`${g.self}-${g.opp}`).join(" / ");
+  const totalScore=(games)=>{const w=games.filter(g=>g.self>g.opp).length,l=games.filter(g=>g.self<g.opp).length;return`${w}-${l}`;};
+
+  const dd=new Date(date+"T00:00:00");
+  const weekday=["日","月","火","水","木","金","土"][dd.getDay()];
+  const dayMin=dayLogs.reduce((a,l)=>a+((l.hours||0)*60+(l.minutes||0)),0);
+
+  return(
+    <div style={{maxWidth:680,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingTop:8}}>
+        <button onClick={onBack} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← カレンダー</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>{date}（{weekday}）</h2>
+      </div>
+
+      {/* Summary */}
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {dayLogs.length>0&&(
+          <div style={{...card,padding:"10px 14px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:10,color:"#64748b"}}>練習時間</div>
+            <div style={{fontSize:18,fontWeight:900}}>{Math.floor(dayMin/60)}<span style={{fontSize:12,fontWeight:400}}>h</span>{dayMin%60>0&&<>{" "}{dayMin%60}<span style={{fontSize:12,fontWeight:400}}>m</span></>}</div>
+          </div>
+        )}
+        {dayMatches.length>0&&(
+          <div style={{...card,padding:"10px 14px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:10,color:"#eab308"}}>試合</div>
+            <div style={{fontSize:18,fontWeight:900}}>{dayMatches.filter(m=>m.result==="win").length}<span style={{fontSize:12,fontWeight:400}}>勝</span> {dayMatches.filter(m=>m.result==="lose").length}<span style={{fontSize:12,fontWeight:400}}>敗</span></div>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
+        <button onClick={()=>setTab("practice")}
+          style={{...bBtn,fontSize:13,padding:"7px 18px",fontWeight:700,flex:1,
+            background:tab==="practice"?"rgba(34,197,94,0.3)":"rgba(255,255,255,0.06)",
+            borderBottom:tab==="practice"?"2px solid #22c55e":"2px solid transparent"}}>
+          📝 練習記録{dayLogs.length>0&&` (${dayLogs.length})`}
+        </button>
+        <button onClick={()=>setTab("match")}
+          style={{...bBtn,fontSize:13,padding:"7px 18px",fontWeight:700,flex:1,
+            background:tab==="match"?"rgba(234,179,8,0.2)":"rgba(255,255,255,0.06)",
+            borderBottom:tab==="match"?"2px solid #eab308":"2px solid transparent"}}>
+          🏆 試合記録{dayMatches.length>0&&` (${dayMatches.length})`}
+        </button>
+      </div>
+
+      {/* ── Practice tab ── */}
+      {tab==="practice"&&(<>
+        {dayLogs.length>0&&(<div style={{marginBottom:16}}><div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {dayLogs.map(l=>(<div key={l.id} style={{...card,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:20}}>{l.condition||"😊"}</span>
+                <span style={{fontSize:13,color:"#94a3b8"}}>{l.hours||0}h {l.minutes||0}m</span>
+                {l.location&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:8,background:"rgba(139,92,246,0.12)",color:"#a78bfa",border:"1px solid rgba(139,92,246,0.2)"}}>📍 {l.location}</span>}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>startEditLog(l._idx)} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:6,color:"#3b82f6",fontSize:11,padding:"3px 10px",cursor:"pointer"}}>編集</button>
+                <ConfirmDelete onDelete={()=>deleteLog(l._idx)}/>
+              </div>
+            </div>
+            {l.content&&<div style={{fontSize:13,color:"#cbd5e1",whiteSpace:"pre-wrap",lineHeight:1.7}}>{l.content}</div>}
+          </div>))}
+        </div></div>)}
+        <div style={{...card}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:15,fontWeight:700}}>{editLogIdx>=0?"✏️ 記録を編集":"➕ 練習記録を追加"}</div>
+            <button onClick={()=>setShowPresetMgr(v=>!v)} style={{...aBtn,fontSize:11,padding:"4px 10px",color:showPresetMgr?"#eab308":"#94a3b8"}}>
+              ⚙️ よく使う項目
+            </button>
+          </div>
+
+          {/* Preset manager */}
+          {showPresetMgr&&(
+            <div style={{padding:12,marginBottom:14,borderRadius:10,background:"rgba(234,179,8,0.05)",border:"1px solid rgba(234,179,8,0.15)"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#eab308",marginBottom:10}}>⚙️ よく使う項目の管理</div>
+              {/* Location presets */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,color:"#94a3b8",marginBottom:4}}>📍 練習場所</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                  {presets.locations.map((loc,i)=>(
+                    <span key={i} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:12,padding:"3px 10px",borderRadius:8,background:"rgba(139,92,246,0.12)",color:"#a78bfa",border:"1px solid rgba(139,92,246,0.2)"}}>
+                      {loc}
+                      <span onClick={()=>setPresets(p=>({...p,locations:p.locations.filter((_,j)=>j!==i)}))} style={{cursor:"pointer",fontSize:10,opacity:0.7}}>✕</span>
+                    </span>
+                  ))}
+                  {presets.locations.length===0&&<span style={{fontSize:11,color:"#475569"}}>未登録</span>}
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <input type="text" value={newLocPreset} onChange={e=>setNewLocPreset(e.target.value)}
+                    style={{...inputStyle,fontSize:12,padding:"5px 8px",flex:1}} placeholder="場所を追加..."
+                    onKeyDown={e=>{if(e.key==="Enter"&&newLocPreset.trim()){setPresets(p=>({...p,locations:[...p.locations,newLocPreset.trim()]}));setNewLocPreset("");}}}/>
+                  <button onClick={()=>{if(newLocPreset.trim()){setPresets(p=>({...p,locations:[...p.locations,newLocPreset.trim()]}));setNewLocPreset("");}}}
+                    style={{...aBtn,fontSize:11,padding:"5px 10px",color:"#a78bfa"}}>追加</button>
+                </div>
+              </div>
+              {/* Content presets */}
+              <div>
+                <div style={{fontSize:12,color:"#94a3b8",marginBottom:4}}>📝 練習内容</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:6}}>
+                  {presets.contents.map((ct,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,padding:"4px 10px",borderRadius:8,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.15)",color:"#93c5fd"}}>
+                      <span style={{flex:1,whiteSpace:"pre-wrap"}}>{ct}</span>
+                      <span onClick={()=>setPresets(p=>({...p,contents:p.contents.filter((_,j)=>j!==i)}))} style={{cursor:"pointer",fontSize:10,opacity:0.7,flexShrink:0}}>✕</span>
+                    </div>
+                  ))}
+                  {presets.contents.length===0&&<span style={{fontSize:11,color:"#475569"}}>未登録</span>}
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <input type="text" value={newContentPreset} onChange={e=>setNewContentPreset(e.target.value)}
+                    style={{...inputStyle,fontSize:12,padding:"5px 8px",flex:1}} placeholder="練習内容を追加..."
+                    onKeyDown={e=>{if(e.key==="Enter"&&newContentPreset.trim()){setPresets(p=>({...p,contents:[...p.contents,newContentPreset.trim()]}));setNewContentPreset("");}}}/>
+                  <button onClick={()=>{if(newContentPreset.trim()){setPresets(p=>({...p,contents:[...p.contents,newContentPreset.trim()]}));setNewContentPreset("");}}}
+                    style={{...aBtn,fontSize:11,padding:"5px 10px",color:"#93c5fd"}}>追加</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Location field with preset chips */}
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+            <span style={{fontSize:12,color:"#94a3b8"}}>📍 練習場所</span>
+            {presets.locations.length>0&&(
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:2}}>
+                {presets.locations.map((loc,i)=>(
+                  <button key={i} onClick={()=>setLocation(loc)}
+                    style={{fontSize:11,padding:"3px 10px",borderRadius:8,cursor:"pointer",
+                      background:location===loc?"rgba(139,92,246,0.3)":"rgba(255,255,255,0.04)",
+                      border:location===loc?"1px solid rgba(139,92,246,0.5)":"1px solid rgba(255,255,255,0.1)",
+                      color:location===loc?"#c4b5fd":"#94a3b8",fontWeight:location===loc?700:400}}>
+                    {loc}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input type="text" value={location} onChange={e=>setLocation(e.target.value)}
+              style={inputStyle} placeholder="例: ○○体育館、学校"/>
+          </label>
+
+          {/* Content field with preset chips */}
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+            <span style={{fontSize:12,color:"#94a3b8"}}>練習内容・メモ <span style={{fontSize:10,color:"#475569"}}>（任意）</span></span>
+            {presets.contents.length>0&&(
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:2}}>
+                {presets.contents.map((ct,i)=>(
+                  <button key={i} onClick={()=>setContent(prev=>prev?(prev+"\n"+ct):ct)}
+                    style={{fontSize:11,padding:"3px 10px",borderRadius:8,cursor:"pointer",
+                      background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.15)",
+                      color:"#93c5fd"}}>
+                    ＋ {ct}
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea value={content} onChange={e=>setContent(e.target.value)} rows={4} style={taStyle}
+              placeholder={"例:\n・フォアハンドドライブの連続練習 30分\n・サーブ練習（下回転・横回転）20分\n・課題：3球目のコースが甘い"}/>
+          </label>
+
+          <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <label style={{display:"flex",flexDirection:"column",gap:4}}>
+              <span style={{fontSize:12,color:"#94a3b8"}}>練習時間</span>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <select value={hours} onChange={e=>setHours(e.target.value)} style={{...inputStyle,width:64,textAlign:"center",fontSize:16,padding:"8px 4px"}}>
+                  {[...Array(13)].map((_,i)=><option key={i} value={i}>{i}</option>)}
+                </select>
+                <span style={{fontSize:13}}>時間</span>
+                <select value={minutes} onChange={e=>setMinutes(e.target.value)} style={{...inputStyle,width:64,textAlign:"center",fontSize:16,padding:"8px 4px"}}>
+                  {[0,5,10,15,20,25,30,35,40,45,50,55].map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+                <span style={{fontSize:13}}>分</span>
+              </div>
+            </label>
+          </div>
+          <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+            <span style={{fontSize:12,color:"#94a3b8"}}>コンディション</span>
+            <div style={{display:"flex",gap:6}}>
+              {["😊","🙂","😐","😓","🤕"].map(em=>(
+                <button key={em} onClick={()=>setCondition(em)} style={{fontSize:24,background:condition===em?"rgba(59,130,246,0.3)":"rgba(255,255,255,0.04)",border:condition===em?"2px solid #3b82f6":"2px solid transparent",borderRadius:10,padding:"4px 8px",cursor:"pointer"}}>{em}</button>
+              ))}
+            </div>
+          </label>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={addLog} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:14,padding:"8px 20px",fontWeight:700}}>{editLogIdx>=0?"更新":"記録する"}</button>
+            {editLogIdx>=0&&<button onClick={()=>{setEditLogIdx(-1);setContent("");setLocation("");}} style={{...aBtn,fontSize:14,padding:"8px 16px"}}>キャンセル</button>}
+          </div>
+        </div>
+      </>)}
+
+      {/* ── Match tab ── */}
+      {tab==="match"&&(<>
+        {/* Saved matches for this day */}
+        {dayMatches.length>0&&!showForm&&(<div style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:14,fontWeight:700}}>この日の試合結果</div>
+            <button onClick={startEditAllDayMatches} style={{...aBtn,fontSize:11,padding:"4px 12px"}}>✏️ まとめて編集</button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {dayMatches.map(m=>{
+              const gs=m.games||[];const rs=m.result||(gs.length?calcResult(gs):"draw");
+              return(
+              <div key={m.id} style={{...card,padding:14,borderLeft:`3px solid ${rs==="win"?"#22c55e":rs==="lose"?"#ef4444":"#64748b"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{padding:"2px 10px",borderRadius:8,fontSize:12,fontWeight:700,
+                      background:rs==="win"?"rgba(34,197,94,0.2)":rs==="lose"?"rgba(239,68,68,0.2)":"rgba(148,163,184,0.2)",
+                      color:rs==="win"?"#22c55e":rs==="lose"?"#ef4444":"#94a3b8"}}>
+                      {rs==="win"?"勝ち":rs==="lose"?"負け":"引分"}
+                    </span>
+                    <span style={{fontWeight:700,fontSize:14}}>vs {m.opponent}{m.isDoubles&&m.opponent2?` / ${m.opponent2}`:""}</span>
+                    {gs.length>0&&<span style={{fontSize:13,color:"#94a3b8",fontWeight:700}}>{totalScore(gs)}</span>}
+                  </div>
+                  <ConfirmDelete onDelete={()=>deleteDayMatch(m._idx)}/>
+                </div>
+                {m.isDoubles&&(<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                  {m.isDoubles&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:8,background:"rgba(234,179,8,0.12)",color:"#eab308",border:"1px solid rgba(234,179,8,0.2)"}}>ダブルス</span>}
+                  {m.partner&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:8,background:"rgba(34,197,94,0.12)",color:"#22c55e",border:"1px solid rgba(34,197,94,0.2)"}}>味方: {m.partner}</span>}
+                </div>)}
+                {gs.length>0&&<div style={{fontSize:12,color:"#64748b",marginBottom:4}}>ゲームスコア: {scoreStr(gs)}</div>}
+                {(()=>{
+                  const EquipBadges=({label,color,eq})=>{
+                    if(!eq)return null;
+                    return(
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                        <span style={{fontSize:10,color,fontWeight:700,minWidth:28}}>{label}</span>
+                        {eq.racketType&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(255,255,255,0.06)",color:"#94a3b8"}}>{eq.racketType}</span>}
+                        <span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(59,130,246,0.12)",color:"#93c5fd"}}>F:{eq.foreRubber||"裏ソフト"}</span>
+                        {(eq.backRubber||"裏ソフト")!=="なし"&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(239,68,68,0.12)",color:"#fca5a5"}}>B:{eq.backRubber||"裏ソフト"}</span>}
+                        {(eq.backRubber||"裏ソフト")==="なし"&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(255,255,255,0.06)",color:"#64748b"}}>B:なし</span>}
+                      </div>
+                    );
+                  };
+                  return(
+                    <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:4}}>
+                      <EquipBadges label="自分" color="#94a3b8" eq={m.equipment}/>
+                      <EquipBadges label="相手" color="#f97316" eq={m.opponentEquip}/>
+                      {m.isDoubles&&<EquipBadges label="味方" color="#22c55e" eq={m.partnerEquip}/>}
+                      {m.isDoubles&&<EquipBadges label="相手②" color="#f97316" eq={m.opponent2Equip}/>}
+                    </div>
+                  );
+                })()}
+                {m.notes&&<div style={{fontSize:13,color:"#cbd5e1",whiteSpace:"pre-wrap",lineHeight:1.7,marginTop:4}}>{m.notes}</div>}
+              </div>);
+            })}
+          </div>
+        </div>)}
+
+        {/* Add / Edit form */}
+        {(!showForm&&dayMatches.length>0)?(
+          <button onClick={()=>{setMatchList([emptyMatch()]);setEditMatchIdx(-1);setShowForm(true);}}
+            style={{...card,border:"2px dashed rgba(234,179,8,0.3)",cursor:"pointer",textAlign:"center",padding:16,color:"#eab308",fontWeight:700,fontSize:14,width:"100%",background:"rgba(234,179,8,0.04)"}}>
+            ➕ 試合記録を追加する
+          </button>
+        ):(
+          <div style={{...card,borderTop:"3px solid #eab308"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:14,color:"#eab308"}}>{editMatchIdx>=0?"✏️ 試合記録を編集":"🏆 試合記録を追加"}</div>
+
+            {matchList.map((match,mi)=>(
+              <div key={match.id} style={{padding:14,marginBottom:12,borderRadius:10,background:"rgba(234,179,8,0.04)",border:"1px solid rgba(234,179,8,0.15)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#eab308"}}>第{mi+1}試合</div>
+                  {matchList.length>1&&<button onClick={()=>removeMatchSlot(mi)} style={{fontSize:11,color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>✕ 削除</button>}
+                </div>
+
+                {/* Singles / Doubles toggle */}
+                <div style={{display:"flex",gap:6,marginBottom:10}}>
+                  <button onClick={()=>updateMatch(mi,"isDoubles",false)}
+                    style={{...bBtn,fontSize:12,padding:"6px 14px",fontWeight:700,flex:1,
+                      background:!match.isDoubles?"rgba(234,179,8,0.3)":"rgba(255,255,255,0.06)",
+                      border:!match.isDoubles?"1px solid rgba(234,179,8,0.4)":"1px solid rgba(255,255,255,0.1)"}}>
+                    🏓 シングルス
+                  </button>
+                  <button onClick={()=>updateMatch(mi,"isDoubles",true)}
+                    style={{...bBtn,fontSize:12,padding:"6px 14px",fontWeight:700,flex:1,
+                      background:match.isDoubles?"rgba(234,179,8,0.3)":"rgba(255,255,255,0.06)",
+                      border:match.isDoubles?"1px solid rgba(234,179,8,0.4)":"1px solid rgba(255,255,255,0.1)"}}>
+                    🏓🏓 ダブルス
+                  </button>
+                </div>
+
+                {/* Opponent */}
+                <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+                  <span style={{fontSize:12,color:"#94a3b8"}}>{match.isDoubles?"対戦相手①":"対戦相手"}</span>
+                  <input type="text" value={match.opponent} onChange={e=>updateMatch(mi,"opponent",e.target.value)}
+                    style={inputStyle} placeholder="名前 / チーム名"/>
+                </label>
+
+                {/* Doubles fields */}
+                {match.isDoubles&&(<>
+                  <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+                    <span style={{fontSize:12,color:"#94a3b8"}}>対戦相手②</span>
+                    <input type="text" value={match.opponent2||""} onChange={e=>updateMatch(mi,"opponent2",e.target.value)}
+                      style={inputStyle} placeholder="ペアの相手"/>
+                  </label>
+                  <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+                    <span style={{fontSize:12,color:"#22c55e"}}>味方（パートナー）</span>
+                    <input type="text" value={match.partner||""} onChange={e=>updateMatch(mi,"partner",e.target.value)}
+                      style={{...inputStyle,borderColor:"rgba(34,197,94,0.3)"}} placeholder="自分のペア"/>
+                  </label>
+                </>)}
+
+                {/* Equipment helper */}
+                {(()=>{
+                  const EquipBlock=({label,color,equip,onUpdate,borderColor})=>{
+                    const eq=equip||defEquip();
+                    return(
+                      <div style={{marginBottom:10}}>
+                        <span style={{fontSize:12,color,display:"block",marginBottom:4}}>{label}</span>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                          <label style={{display:"flex",flexDirection:"column",gap:3}}>
+                            <span style={{fontSize:10,color:"#64748b"}}>ラケット</span>
+                            <select value={eq.racketType||"シェーク"} onChange={e=>onUpdate("racketType",e.target.value)}
+                              style={{...inputStyle,fontSize:11,padding:"5px 4px",...(borderColor?{borderColor}:{})}}>
+                              {RACKET_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </label>
+                          <label style={{display:"flex",flexDirection:"column",gap:3}}>
+                            <span style={{fontSize:10,color:"#3b82f6"}}>F フォア</span>
+                            <select value={eq.foreRubber||"裏ソフト"} onChange={e=>onUpdate("foreRubber",e.target.value)}
+                              style={{...inputStyle,fontSize:11,padding:"5px 4px",...(borderColor?{borderColor}:{})}}>
+                              {RUBBER_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </label>
+                          <label style={{display:"flex",flexDirection:"column",gap:3}}>
+                            <span style={{fontSize:10,color:"#ef4444"}}>B バック</span>
+                            <select value={eq.backRubber||"裏ソフト"} onChange={e=>onUpdate("backRubber",e.target.value)}
+                              style={{...inputStyle,fontSize:11,padding:"5px 4px",...(borderColor?{borderColor}:{})}}>
+                              {RUBBER_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  };
+                  return(<>
+                    <EquipBlock label="自分の用具" color="#94a3b8" equip={match.equipment} onUpdate={(f,v)=>updateEquip(mi,f,v)}/>
+                    {match.isDoubles&&(
+                      <EquipBlock label={`味方の用具${match.partner?` (${match.partner})`:""}`} color="#22c55e" equip={match.partnerEquip} onUpdate={(f,v)=>updatePartnerEquip(mi,f,v)} borderColor="rgba(34,197,94,0.3)"/>
+                    )}
+                    <EquipBlock label={`相手の用具${!match.isDoubles?"":match.opponent?` (${match.opponent})`:""}`} color="#f97316" equip={match.opponentEquip} onUpdate={(f,v)=>updateOpponentEquip(mi,f,v)} borderColor="rgba(249,115,22,0.3)"/>
+                    {match.isDoubles&&(
+                      <EquipBlock label={`相手②の用具${match.opponent2?` (${match.opponent2})`:""}`} color="#f97316" equip={match.opponent2Equip} onUpdate={(f,v)=>updateOpp2Equip(mi,f,v)} borderColor="rgba(249,115,22,0.3)"/>
+                    )}
+                  </>);
+                })()}
+
+                {/* Game scores */}
+                <div style={{marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <span style={{fontSize:12,color:"#94a3b8"}}>ゲームスコア</span>
+                    <button onClick={()=>addGame(mi)} style={{fontSize:11,color:"#eab308",background:"rgba(234,179,8,0.15)",border:"1px solid rgba(234,179,8,0.3)",borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>＋ ゲーム追加</button>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {match.games.map((g,gi)=>(
+                      <div key={gi} style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:11,color:"#64748b",width:20,textAlign:"right"}}>{gi+1}.</span>
+                        <input type="number" min={0} max={99} value={g.self} onChange={e=>updateGame(mi,gi,"self",e.target.value)}
+                          style={{...inputStyle,width:48,textAlign:"center",fontSize:14,fontWeight:700,padding:"4px 6px",
+                            color:g.self>g.opp?"#22c55e":g.self<g.opp?"#ef4444":"#e2e8f0"}}/>
+                        <span style={{fontSize:12,color:"#64748b"}}>-</span>
+                        <input type="number" min={0} max={99} value={g.opp} onChange={e=>updateGame(mi,gi,"opp",e.target.value)}
+                          style={{...inputStyle,width:48,textAlign:"center",fontSize:14,fontWeight:700,padding:"4px 6px",
+                            color:g.opp>g.self?"#22c55e":g.opp<g.self?"#ef4444":"#e2e8f0"}}/>
+                        {match.games.length>1&&<button onClick={()=>removeGame(mi,gi)} style={{fontSize:10,color:"#64748b",background:"none",border:"none",cursor:"pointer",padding:"2px 4px"}}>✕</button>}
+                        {g.self>0||g.opp>0?<span style={{fontSize:11,color:g.self>g.opp?"#22c55e":g.self<g.opp?"#ef4444":"#64748b",fontWeight:600}}>{g.self>g.opp?"WIN":g.self<g.opp?"LOSE":"DRAW"}</span>:null}
+                      </div>
+                    ))}
+                  </div>
+                  {match.games.some(g=>g.self>0||g.opp>0)&&(
+                    <div style={{marginTop:6,fontSize:12,color:"#94a3b8"}}>
+                      トータル: <strong style={{color:"#e2e8f0"}}>{totalScore(match.games)}</strong>
+                      {" → "}
+                      <span style={{fontWeight:700,color:calcResult(match.games)==="win"?"#22c55e":calcResult(match.games)==="lose"?"#ef4444":"#94a3b8"}}>
+                        {calcResult(match.games)==="win"?"勝ち":calcResult(match.games)==="lose"?"負け":"引分"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <label style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <span style={{fontSize:12,color:"#94a3b8"}}>振り返り</span>
+                  <textarea value={match.notes} onChange={e=>updateMatch(mi,"notes",e.target.value)} rows={3}
+                    style={{...taStyle,minHeight:70}}
+                    placeholder={"・良かった点\n・課題\n・次への対策"}/>
+                </label>
+              </div>
+            ))}
+
+            {/* Add another match */}
+            <button onClick={addMatchSlot}
+              style={{width:"100%",padding:10,marginBottom:12,borderRadius:8,border:"2px dashed rgba(234,179,8,0.25)",background:"rgba(234,179,8,0.03)",color:"#eab308",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              ＋ もう1試合追加
+            </button>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                const updated=matchList.map(m=>{const r=m.games.some(g=>g.self>0||g.opp>0)?calcResult(m.games):m.result;return{...m,result:r};});
+                setMatchList(updated);
+                setTimeout(()=>{
+                  const valid=updated.filter(m=>m.opponent.trim());
+                  if(!valid.length)return;
+                  const entries=valid.map(m=>({...m,id:Date.now()+Math.random(),date,result:m.games.some(g=>g.self>0||g.opp>0)?calcResult(m.games):m.result}));
+                  if(editMatchIdx>=0){const dayIds=new Set(dayMatches.map(dm=>dm.id));setMatches(p=>[...p.filter(m=>!dayIds.has(m.id)),...entries]);}
+                  else setMatches(p=>[...entries,...p]);
+                  setMatchList([emptyMatch()]);setShowForm(false);setEditMatchIdx(-1);
+                },0);
+              }} style={{...aBtn,background:"rgba(234,179,8,0.25)",border:"1px solid rgba(234,179,8,0.4)",fontSize:14,padding:"8px 20px",fontWeight:700,color:"#eab308"}}>
+                {editMatchIdx>=0?"更新":"すべて記録する"}
+              </button>
+              <button onClick={()=>{setMatchList([emptyMatch()]);setShowForm(dayMatches.length===0);setEditMatchIdx(-1);}} style={{...aBtn,fontSize:14,padding:"8px 16px"}}>キャンセル</button>
+            </div>
+          </div>
+        )}
+      </>)}
+    </div>
+  );
+}
+
+/* ════════════ DRAW PAGE ════════════ */
+function DrawPage({drawings,setDrawings,memos,setMemos}){
+  const courtRef=useRef(null),drawRef=useRef(null);
+  const curPathRef=useRef([]),drawingRef=useRef(false),coneStartRef=useRef(null),moveRef=useRef(null);
+  const [tool,setTool]=useState("pen");
+  const [color,setColor]=useState("#ef4444");
+  const [sw,setSw]=useState(4);
+  const [editMemo,setEditMemo]=useState(null);
+  const [arrows,setArrows]=useState(true);
+  const [autoCorrect,setAutoCorrect]=useState(true);
+  const [coneAngle,setConeAngle]=useState(40);
+  const [conePrev,setConePrev]=useState(null);
+  const [playerLabel,setPlayerLabel]=useState("自");
+  const [showOptions,setShowOptions]=useState(false);
+  const [,forceUpdate]=useState(0);
+
+  const cones=drawings.filter(d=>d.type==="cone"),players=drawings.filter(d=>d.type==="player"),strokes=drawings.filter(d=>d.type!=="cone"&&d.type!=="player");
+
+  const redraw=useCallback(()=>{const c=drawRef.current;if(!c)return;const ctx=c.getContext("2d");ctx.clearRect(0,0,CW,CH);cones.forEach(d=>drawCone(ctx,d));if(conePrev)drawCone(ctx,conePrev);strokes.forEach(d=>renderStroke(ctx,d,arrows));players.forEach(d=>drawPlayer(ctx,d));const live=curPathRef.current;if(live.length>=2)drawLive(ctx,live,color,sw);ctx.setLineDash([]);},[cones,strokes,players,arrows,conePrev,color,sw]);
+  useEffect(()=>{const c=courtRef.current;if(!c)return;const ctx=c.getContext("2d");ctx.clearRect(0,0,CW,CH);drawCourt(ctx);},[]);
+  useEffect(()=>{redraw();},[redraw]);
+
+  const getPos=(e)=>{const r=drawRef.current.getBoundingClientRect();const ex=e.touches?e.touches[0].clientX:e.clientX;const ey=e.touches?e.touches[0].clientY:e.clientY;return{x:(ex-r.left)*CW/r.width,y:(ey-r.top)*CH/r.height};};
+
+  const onDown=(e)=>{
+    const pos=getPos(e);
+    if(tool==="player"){setDrawings(p=>[...p,{type:"player",pos,color,label:playerLabel}]);return;}
+    if(tool==="memo"){const id=Date.now();setMemos(p=>[...p,{id,x:pos.x,y:pos.y,text:"",color}]);setTimeout(()=>setEditMemo(id),0);return;}
+    if(tool==="recolor"){const mi=findNearestMemo(pos,memos,50);if(mi>=0){setMemos(p=>p.map((m,i)=>i===mi?{...m,color}:m));return;}const di=findNearest(pos,drawings,30);if(di>=0){setDrawings(p=>p.map((d,i)=>i===di?{...d,color}:d));return;}return;}
+    if(tool==="eraser"){const th=20;setDrawings(prev=>prev.filter(d=>{if(d.type==="player")return Math.hypot(d.pos.x-pos.x,d.pos.y-pos.y)>=th;if(d.type==="cone")return!inCone(pos,d);if(d.type==="line")return dSeg(pos,d.points[0],d.points[1])>=th;if(d.type==="curve")return dCrv(pos,d.points)>=th;if(d.type==="raw")return!d.points.some(p2=>Math.hypot(p2.x-pos.x,p2.y-pos.y)<th);return true;}));setMemos(p=>p.filter(m=>Math.hypot(m.x-pos.x,m.y-pos.y)>=th));return;}
+    if(tool==="move"){const mi=findNearestMemo(pos,memos,80);if(mi>=0){setMemos(p=>p.map((m,i)=>i===mi?{...m,color}:m));moveRef.current={type:"memo",idx:mi,startPos:pos};drawingRef.current=true;return;}const di=findNearest(pos,drawings,30);if(di>=0){setDrawings(p=>p.map((d,i)=>i===di?{...d,color}:d));moveRef.current={type:"drawing",idx:di,startPos:pos};drawingRef.current=true;return;}return;}
+    if(tool==="cone"){coneStartRef.current=pos;drawingRef.current=true;return;}
+    curPathRef.current=[pos];drawingRef.current=true;
+  };
+  const onMove=(e)=>{if(!drawingRef.current)return;const pos=getPos(e);
+    if(tool==="move"&&moveRef.current){const dx=pos.x-moveRef.current.startPos.x,dy=pos.y-moveRef.current.startPos.y;if(moveRef.current.type==="memo")setMemos(p=>p.map((m,i)=>i===moveRef.current.idx?{...m,x:m.x+dx,y:m.y+dy}:m));else setDrawings(p=>p.map((d,i)=>i===moveRef.current.idx?offsetDrawing(d,dx,dy):d));moveRef.current.startPos=pos;return;}
+    if(tool==="cone"&&coneStartRef.current){setConePrev({type:"cone",origin:coneStartRef.current,target:pos,spread:coneAngle,color,opacity:0.2});return;}
+    if(tool==="pen"){curPathRef.current=[...curPathRef.current,pos];const ctx=drawRef.current.getContext("2d");ctx.clearRect(0,0,CW,CH);cones.forEach(d=>drawCone(ctx,d));strokes.forEach(d=>renderStroke(ctx,d,arrows));players.forEach(d=>drawPlayer(ctx,d));drawLive(ctx,curPathRef.current,color,sw);ctx.setLineDash([]);}
+  };
+  const onUp=()=>{if(!drawingRef.current)return;drawingRef.current=false;
+    if(tool==="move"){moveRef.current=null;return;}
+    if(tool==="cone"&&coneStartRef.current){const t=conePrev?.target;if(t&&Math.hypot(t.x-coneStartRef.current.x,t.y-coneStartRef.current.y)>10)setDrawings(p=>[...p,{type:"cone",origin:coneStartRef.current,target:t,spread:coneAngle,color,opacity:0.25}]);coneStartRef.current=null;setConePrev(null);return;}
+    if(tool==="pen"&&curPathRef.current.length>1){const raw=curPathRef.current;if(autoCorrect){const c=correct(raw);if(c)setDrawings(p=>[...p,{...c,color,width:sw}]);}else setDrawings(p=>[...p,{type:"raw",points:raw,color,width:sw}]);}
+    curPathRef.current=[];forceUpdate(n=>n+1);
+  };
+
+  const tbBtn=(active,extra={})=>({...bBtn,padding:"8px 0",fontSize:16,width:42,height:42,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:active?"rgba(59,130,246,0.5)":"transparent",borderRadius:10,...extra});
+
+  return(
+    <div style={{maxWidth:900,margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+      {/* Court - full width on mobile */}
+      <div style={{width:"100%",maxWidth:650,position:"relative",borderRadius:12,overflow:"hidden",boxShadow:"0 10px 40px rgba(0,0,0,0.5)"}}>
+        <div style={{position:"relative",width:"100%",paddingBottom:`${CH/CW*100}%`}}>
+          <canvas ref={courtRef} width={CW} height={CH} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:1}}/>
+          <canvas ref={drawRef} width={CW} height={CH} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:2}}/>
+          {editMemo===null&&(<div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:3,touchAction:"none",cursor:tool==="eraser"?"crosshair":tool==="memo"?"text":tool==="move"?"grab":tool==="cone"?"cell":tool==="recolor"?"pointer":tool==="player"?"copy":"crosshair"}}/>)}
+          <div style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:4,pointerEvents:"none"}}>
+            {memos.map(m=>(
+              <div key={m.id} style={{position:"absolute",left:`${m.x/CW*100}%`,top:`${m.y/CH*100}%`,transform:"translate(-4px,-4px)",pointerEvents:tool==="move"?"none":"auto"}}>
+                <div style={{background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",border:`2px solid ${m.color}`,borderRadius:8,padding:"5px 9px",minWidth:80,maxWidth:170,boxShadow:editMemo===m.id?`0 0 14px ${m.color}66`:"0 2px 8px rgba(0,0,0,0.4)"}}>
+                  {editMemo===m.id?(
+                    <textarea autoFocus value={m.text} onChange={e=>setMemos(p=>p.map(mm=>mm.id===m.id?{...mm,text:e.target.value}:mm))}
+                      onBlur={()=>{setMemos(p=>{const c2=p.find(mm=>mm.id===m.id);if(c2&&!c2.text.trim())return p.filter(mm=>mm.id!==m.id);return p;});setEditMemo(null);}}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();setMemos(p=>{const c2=p.find(mm=>mm.id===m.id);if(c2&&!c2.text.trim())return p.filter(mm=>mm.id!==m.id);return p;});setEditMemo(null);}}}
+                      style={{background:"transparent",border:"none",color:m.color,fontSize:12,fontFamily:"inherit",resize:"vertical",outline:"none",width:130,minHeight:36,display:"block",lineHeight:1.5}} placeholder="メモを入力..."/>
+                  ):(<div onClick={()=>{if(tool!=="move")setEditMemo(m.id);}} style={{color:m.color,fontSize:12,cursor:tool==="move"?"grab":"pointer",whiteSpace:"pre-wrap",wordBreak:"break-word",minHeight:18,lineHeight:1.5}}>{m.text||"タップして編集"}</div>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile toolbar - horizontal below canvas */}
+      <div style={{width:"100%",maxWidth:650}}>
+        {/* Main tools row */}
+        <div style={{display:"flex",gap:3,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",padding:"4px 0",WebkitOverflowScrolling:"touch"}}>
+          {TOOLS.map(t=>(<button key={t.id} onClick={()=>{setTool(t.id);setEditMemo(null);}} style={tbBtn(tool===t.id)}>
+            <span style={{fontSize:16}}>{t.icon}</span>
+          </button>))}
+          <div style={{width:1,background:"rgba(255,255,255,0.1)",margin:"4px 2px",flexShrink:0}}/>
+          <button onClick={()=>setDrawings(p=>p.slice(0,-1))} style={tbBtn(false)}>↩️</button>
+          <button onClick={()=>{setDrawings([]);setMemos([]);}} style={tbBtn(false)}>🗑️</button>
+          <button onClick={()=>setShowOptions(v=>!v)} style={tbBtn(showOptions,{color:showOptions?"#3b82f6":"#94a3b8",fontSize:14})}>⚙️</button>
+        </div>
+
+        {/* Tool label */}
+        <div style={{textAlign:"center",fontSize:11,color:"#64748b",padding:"2px 0"}}>
+          {TOOLS.find(t=>t.id===tool)?.label||""}
+          {tool==="player"&&` (${playerLabel})`}
+        </div>
+
+        {/* Colors row */}
+        <div style={{display:"flex",gap:6,justifyContent:"center",padding:"6px 0"}}>
+          {COLORS.map(c=>(<button key={c.v} onClick={()=>setColor(c.v)} style={{width:28,height:28,borderRadius:"50%",border:color===c.v?"3px solid #fff":"2px solid rgba(255,255,255,0.2)",background:c.v,cursor:"pointer",boxShadow:c.v==="#111111"?"inset 0 0 0 1px rgba(255,255,255,0.25)":"none",flexShrink:0}}/>))}
+          <div style={{width:1,background:"rgba(255,255,255,0.1)",margin:"0 2px"}}/>
+          {WIDTHS.map(w=>(<button key={w} onClick={()=>setSw(w)} style={{width:28,height:28,borderRadius:8,border:"none",cursor:"pointer",background:sw===w?"rgba(59,130,246,0.5)":"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><div style={{width:w*2.5,height:w*2.5,borderRadius:"50%",background:"#e2e8f0"}}/></button>))}
+        </div>
+
+        {/* Options panel */}
+        {showOptions&&(
+          <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap",padding:"6px 0",background:"rgba(255,255,255,0.03)",borderRadius:10,margin:"4px 0"}}>
+            <button onClick={()=>setAutoCorrect(v=>!v)} style={{...bBtn,fontSize:12,padding:"6px 14px",fontWeight:700,background:autoCorrect?"rgba(34,197,94,0.25)":"rgba(255,255,255,0.04)",border:autoCorrect?"1px solid rgba(34,197,94,0.4)":"1px solid rgba(255,255,255,0.1)"}}>{autoCorrect?"補正 ON":"補正 OFF"}</button>
+            <button onClick={()=>setArrows(v=>!v)} style={{...bBtn,fontSize:12,padding:"6px 14px",fontWeight:700,background:arrows?"rgba(59,130,246,0.25)":"rgba(255,255,255,0.04)",border:arrows?"1px solid rgba(59,130,246,0.4)":"1px solid rgba(255,255,255,0.1)"}}>{arrows?"矢印 ON":"矢印 OFF"}</button>
+            {tool==="cone"&&(
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{coneAngle}°</span>
+                <input type="range" min={10} max={120} value={coneAngle} onChange={e=>setConeAngle(Number(e.target.value))} style={{width:80,accentColor:color}}/>
+              </div>
+            )}
+            {tool==="player"&&(
+              <div style={{display:"flex",gap:3}}>
+                {["自","相","A","B","C","D"].map(lb=>(<button key={lb} onClick={()=>setPlayerLabel(lb)} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:playerLabel===lb?"rgba(59,130,246,0.5)":"rgba(255,255,255,0.08)",color:playerLabel===lb?"#fff":"#94a3b8"}}>{lb}</button>))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════ SHARE IMAGE GENERATOR ════════════ */
+function generateShareImage(title,drawings,memos,notes){
+  const courtW=600,courtH=780;
+  const noteW=600,pad=40,titleH=60;
+  const lines=[];
+  const noteText=notes||"（戦術ノートなし）";
+  const maxChars=28;
+  noteText.split("\n").forEach(line=>{
+    if(line.length===0){lines.push("");}
+    else{for(let i=0;i<line.length;i+=maxChars)lines.push(line.slice(i,i+maxChars));}
+  });
+  const lineH=24,noteH=Math.max(courtH,lines.length*lineH+80);
+  const totalW=courtW+noteW+pad*3,totalH=Math.max(courtH+pad*2+titleH,noteH+pad*2+titleH);
+  const cv=document.createElement("canvas");
+  cv.width=totalW;cv.height=totalH;
+  const ctx=cv.getContext("2d");
+  ctx.fillStyle="#0f172a";ctx.fillRect(0,0,totalW,totalH);
+  ctx.fillStyle="#1e293b";ctx.fillRect(0,0,totalW,titleH);
+  ctx.fillStyle="#e2e8f0";ctx.font="bold 24px 'Noto Sans JP',sans-serif";ctx.textAlign="center";
+  ctx.fillText("🏓 "+(title||"新しい戦術"),totalW/2,titleH/2+8);
+  const cx=pad,cy=titleH+pad;
+  ctx.save();ctx.translate(cx,cy);
+  drawCourt(ctx);
+  drawings.filter(d=>d.type==="cone").forEach(d=>drawCone(ctx,d));
+  drawings.filter(d=>d.type!=="cone"&&d.type!=="player").forEach(d=>renderStroke(ctx,d,true));
+  drawings.filter(d=>d.type==="player").forEach(d=>drawPlayer(ctx,d));
+  memos.forEach(m=>{
+    ctx.save();ctx.fillStyle="rgba(0,0,0,0.85)";
+    const txt=m.text||"";const mLines=txt.split("\n");
+    const mw=Math.min(180,Math.max(80,...mLines.map(l=>l.length*14))+20);
+    const mh=mLines.length*18+14;
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.fill();
+    ctx.strokeStyle=m.color;ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(m.x-4,m.y-4,mw,mh,6);ctx.stroke();
+    ctx.fillStyle=m.color;ctx.font="12px 'Noto Sans JP',sans-serif";ctx.textAlign="left";
+    mLines.forEach((l,i)=>ctx.fillText(l,m.x+6,m.y+14+i*18));
+    ctx.restore();
+  });
+  ctx.restore();
+  ctx.fillStyle="rgba(255,255,255,0.3)";ctx.font="bold 12px 'Noto Sans JP',sans-serif";ctx.textAlign="center";
+  ctx.fillText("⚡ 図面",cx+courtW/2,cy-8);
+  const nx=courtW+pad*2,ny=titleH+pad;
+  ctx.fillStyle="rgba(255,255,255,0.3)";ctx.font="bold 12px 'Noto Sans JP',sans-serif";ctx.textAlign="center";
+  ctx.fillText("📄 戦術ノート",nx+noteW/2,ny-8);
+  ctx.fillStyle="rgba(255,255,255,0.05)";ctx.beginPath();ctx.roundRect(nx,ny,noteW,totalH-titleH-pad*2,10);ctx.fill();
+  ctx.strokeStyle="rgba(255,255,255,0.1)";ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(nx,ny,noteW,totalH-titleH-pad*2,10);ctx.stroke();
+  ctx.fillStyle="#e2e8f0";ctx.font="14px 'Noto Sans JP',sans-serif";ctx.textAlign="left";
+  lines.forEach((l,i)=>ctx.fillText(l,nx+20,ny+30+i*lineH));
+  return cv;
+}
+
+/* ════════════ SHARE BUTTON ════════════ */
+function ShareButton({title,drawings,memos,notes}){
+  const [sharing,setSharing]=useState(false);
+  const share=async()=>{
+    setSharing(true);
+    try{
+      const cv=generateShareImage(title,drawings,memos,notes);
+      const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+      const file=new File([blob],(title||"戦術メモ")+".png",{type:"image/png"});
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({title:title||"戦術メモ",files:[file]});
+      }else{
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement("a");a.href=url;a.download=(title||"戦術メモ")+".png";a.click();
+        URL.revokeObjectURL(url);
+      }
+    }catch(e){if(e.name!=="AbortError")console.error(e);}
+    setSharing(false);
+  };
+  return(
+    <button onClick={share} disabled={sharing}
+      style={{...aBtn,background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12}}>
+      {sharing?"⏳ 画像を作成中...":"📤 画像で共有する"}
+    </button>
+  );
+}
+
+/* ════════════ SERVE ORDER ════════════ */
+function ServeOrderScreen({saved,serveOrders,setServeOrders,onBack}){
+  const [serveList,setServeList]=useState([]);
+  const [orderTitle,setOrderTitle]=useState("");
+  const [orderMemo,setOrderMemo]=useState("");
+  const [currentIdx,setCurrentIdx]=useState(0);
+  const [isPlaying,setIsPlaying]=useState(false);
+  const [editingId,setEditingId]=useState(null);
+  const [saveMsg,setSaveMsg]=useState("");
+  const [view,setView]=useState("list"); // "list" | "edit" | "play"
+  const thumbRefs=useRef({});
+
+  useEffect(()=>{
+    serveList.forEach(item=>{
+      const cv=thumbRefs.current[item._key];
+      const t=saved.find(s=>s.id===item.id);
+      if(cv&&t)renderThumb(cv,t.drawings,t.memos);
+    });
+  },[serveList,saved]);
+
+  const addServe=(tactic)=>setServeList(p=>[...p,{...tactic,_key:Date.now()+Math.random()}]);
+  const removeServe=(idx)=>{setServeList(p=>p.filter((_,i)=>i!==idx));if(currentIdx>=serveList.length-1)setCurrentIdx(Math.max(0,serveList.length-2));};
+  const moveUp=(idx)=>{if(idx<=0)return;setServeList(p=>{const n=[...p];[n[idx-1],n[idx]]=[n[idx],n[idx-1]];return n;});};
+  const moveDown=(idx)=>{if(idx>=serveList.length-1)return;setServeList(p=>{const n=[...p];[n[idx],n[idx+1]]=[n[idx+1],n[idx]];return n;});};
+
+  const saveOrder=()=>{
+    if(serveList.length===0)return;
+    const entry={id:editingId||Date.now(),title:orderTitle||"サーブ順",memo:orderMemo,items:serveList.map(s=>({id:s.id,title:s.title})),date:today()};
+    if(editingId){setServeOrders(p=>p.map(o=>o.id===editingId?entry:o));}
+    else{setServeOrders(p=>[entry,...p]);setEditingId(entry.id);}
+    setSaveMsg("✅ 保存しました");setTimeout(()=>setSaveMsg(""),2000);
+  };
+  const loadOrder=(order)=>{
+    const items=order.items.map(item=>{
+      const t=saved.find(s=>s.id===item.id);
+      return t?{...t,_key:Date.now()+Math.random()}:{...item,_key:Date.now()+Math.random(),drawings:[],memos:[],notes:""};
+    });
+    setServeList(items);setOrderTitle(order.title);setOrderMemo(order.memo||"");setEditingId(order.id);setView("edit");
+  };
+  const deleteOrder=(id)=>setServeOrders(p=>p.filter(o=>o.id!==id));
+  const newOrder=()=>{setServeList([]);setOrderTitle("");setOrderMemo("");setEditingId(null);setView("edit");};
+
+  const next=()=>setCurrentIdx(i=>(i+1)%serveList.length);
+  const prev=()=>setCurrentIdx(i=>(i-1+serveList.length)%serveList.length);
+  const currentServe=serveList[currentIdx];
+  const currentTactic=currentServe?saved.find(s=>s.id===currentServe.id):null;
+  const playRef=useRef(null);
+
+  useEffect(()=>{
+    if(view==="play"&&playRef.current&&currentTactic){
+      renderFull(playRef.current,currentTactic.drawings,currentTactic.memos);
+    }
+  },[view,currentIdx,currentTactic]);
+
+  return(
+    <div style={{maxWidth:700,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingTop:8}}>
+        <button onClick={view==="list"?onBack:()=>setView("list")} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>🎯 サーブ順管理</h2>
+      </div>
+
+      {/* ── Play mode ── */}
+      {view==="play"&&serveList.length>0&&(
+        <div>
+          <div style={{...card,padding:0,overflow:"hidden",marginBottom:12}}>
+            <div style={{padding:"10px 16px",background:"rgba(234,179,8,0.1)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:13,color:"#eab308",fontWeight:700}}>第{currentIdx+1}サーブ / 全{serveList.length}本</div>
+              <div style={{fontSize:14,fontWeight:900,color:"#e2e8f0"}}>{currentServe?.title||""}</div>
+            </div>
+            <canvas ref={playRef} width={400} height={520} style={{width:"100%",maxHeight:"50vh",objectFit:"contain",display:"block",background:"#0d1117"}}/>
+            {currentTactic?.notes&&(
+              <div style={{padding:"10px 16px",fontSize:13,color:"#cbd5e1",whiteSpace:"pre-wrap",lineHeight:1.7,maxHeight:120,overflowY:"auto",borderTop:"1px solid rgba(255,255,255,0.06)"}}>{currentTactic.notes}</div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center"}}>
+            <button onClick={prev} style={{...aBtn,fontSize:20,padding:"10px 18px",minHeight:44}}>◀</button>
+            <div style={{textAlign:"center",minWidth:80}}>
+              <div style={{fontSize:24,fontWeight:900,color:"#eab308"}}>{currentIdx+1}</div>
+              <div style={{fontSize:10,color:"#64748b"}}>/ {serveList.length}</div>
+            </div>
+            <button onClick={next} style={{...aBtn,fontSize:20,padding:"10px 18px",minHeight:44}}>▶</button>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:12}}>
+            <button onClick={()=>{setCurrentIdx(0);setView("edit");}} style={{...aBtn,fontSize:13,padding:"8px 20px",background:"rgba(239,68,68,0.2)",border:"1px solid rgba(239,68,68,0.3)"}}>⏹ 終了</button>
+            <button onClick={()=>setCurrentIdx(0)} style={{...aBtn,fontSize:13,padding:"8px 20px"}}>↩ 最初に戻る</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── List mode (saved orders) ── */}
+      {view==="list"&&(
+        <>
+          <button onClick={newOrder}
+            style={{...card,border:"2px dashed rgba(234,179,8,0.3)",cursor:"pointer",textAlign:"center",padding:16,color:"#eab308",fontWeight:700,fontSize:14,width:"100%",marginBottom:16,background:"rgba(234,179,8,0.04)"}}>
+            ＋ 新しいサーブ順を作成
+          </button>
+          {serveOrders.length===0?(
+            <div style={{...card,textAlign:"center",padding:40}}>
+              <div style={{fontSize:40,marginBottom:10}}>🎯</div>
+              <div style={{color:"#64748b",fontSize:14}}>保存されたサーブ順はありません</div>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {serveOrders.map(order=>(
+                <div key={order.id} style={{...card,padding:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <div>
+                      <div style={{fontSize:15,fontWeight:700}}>{order.title}</div>
+                      <div style={{fontSize:11,color:"#64748b"}}>{order.date} · {order.items.length}本</div>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>{loadOrder(order);setCurrentIdx(0);setView("play");}}
+                        style={{background:"rgba(234,179,8,0.15)",border:"1px solid rgba(234,179,8,0.3)",borderRadius:6,color:"#eab308",fontSize:11,padding:"4px 12px",cursor:"pointer",fontWeight:700}}>▶ 開始</button>
+                      <button onClick={()=>loadOrder(order)}
+                        style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:6,color:"#3b82f6",fontSize:11,padding:"4px 10px",cursor:"pointer"}}>編集</button>
+                      <ConfirmDelete onDelete={()=>deleteOrder(order.id)}/>
+                    </div>
+                  </div>
+                  {order.memo&&<div style={{fontSize:12,color:"#94a3b8",whiteSpace:"pre-wrap",lineHeight:1.6}}>{order.memo}</div>}
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+                    {order.items.map((item,i)=>(
+                      <span key={i} style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:"rgba(234,179,8,0.1)",color:"#eab308",border:"1px solid rgba(234,179,8,0.2)"}}>{i+1}. {item.title}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Edit mode ── */}
+      {view==="edit"&&(
+        <>
+          {/* Title & Memo */}
+          <div style={{...card,marginBottom:16}}>
+            <label style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+              <span style={{fontSize:12,color:"#94a3b8"}}>タイトル</span>
+              <input type="text" value={orderTitle} onChange={e=>setOrderTitle(e.target.value)}
+                style={inputStyle} placeholder="例: 対○○用サーブ順"/>
+            </label>
+            <label style={{display:"flex",flexDirection:"column",gap:4}}>
+              <span style={{fontSize:12,color:"#94a3b8"}}>メモ</span>
+              <textarea value={orderMemo} onChange={e=>setOrderMemo(e.target.value)} rows={2}
+                style={{...taStyle,minHeight:60}}
+                placeholder="例: 1本目で下回転→相手のレシーブを見て2本目を決める"/>
+            </label>
+          </div>
+
+          {/* Tactic candidates */}
+          <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>🏓 戦術メモから追加</div>
+          {saved.length===0?(
+            <div style={{...card,textAlign:"center",padding:24,color:"#64748b",fontSize:13,marginBottom:16}}>戦術メモがありません。先にメモを作成してください。</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+              {saved.map(t=>{
+                const count=serveList.filter(s=>s.id===t.id).length;
+                return(
+                  <button key={t.id} onClick={()=>addServe(t)}
+                    style={{...card,padding:12,display:"flex",alignItems:"center",gap:12,cursor:"pointer",border:"1px solid rgba(255,255,255,0.06)",textAlign:"left",color:"#e2e8f0",width:"100%"}}>
+                    <span style={{fontSize:20}}>＋</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                      {t.notes&&<div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes.slice(0,40)}</div>}
+                    </div>
+                    {count>0&&<span style={{fontSize:11,padding:"2px 8px",borderRadius:8,background:"rgba(234,179,8,0.15)",color:"#eab308",fontWeight:700}}>{count}回</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Save button */}
+          <button onClick={saveOrder} style={{...aBtn,background:saveMsg?"rgba(34,197,94,0.5)":"rgba(34,197,94,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12,transition:"all 0.3s",marginBottom:16}}>
+            {saveMsg||"💾 サーブ順を保存"}
+          </button>
+
+          {/* Serve order list */}
+          {serveList.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:14,fontWeight:700}}>📋 サーブ順 ({serveList.length}本)</div>
+                <button onClick={()=>{setCurrentIdx(0);setView("play");}}
+                  style={{...aBtn,fontSize:13,padding:"8px 18px",fontWeight:700,background:"rgba(234,179,8,0.25)",border:"1px solid rgba(234,179,8,0.4)",color:"#eab308"}}>
+                  ▶ 開始
+                </button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {serveList.map((item,idx)=>(
+                  <div key={item._key} style={{...card,padding:10,display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{fontSize:18,fontWeight:900,color:"#eab308",width:28,textAlign:"center",flexShrink:0}}>{idx+1}</div>
+                    <canvas ref={el=>{if(el)thumbRefs.current[item._key]=el;}} width={120} height={156} style={{width:48,height:62,borderRadius:4,objectFit:"cover",flexShrink:0,background:"#0d1117"}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                      {item.notes&&<div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.notes.slice(0,30)}</div>}
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                      <button onClick={()=>moveUp(idx)} style={{fontSize:10,padding:"2px 6px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,color:"#94a3b8",cursor:"pointer"}}>▲</button>
+                      <button onClick={()=>moveDown(idx)} style={{fontSize:10,padding:"2px 6px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,color:"#94a3b8",cursor:"pointer"}}>▼</button>
+                    </div>
+                    <button onClick={()=>removeServe(idx)} style={{fontSize:10,color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:6,padding:"4px 8px",cursor:"pointer",flexShrink:0}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ════════════ MATCH HISTORY ════════════ */
+function MatchHistoryScreen({matches,setMatches,onBack}){
+  const [filter,setFilter]=useState("all");
+  const [editId,setEditId]=useState(null);
+  const [editData,setEditData]=useState(null);
+  const sorted=[...matches].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const calcResult=(games)=>{const w=games.filter(g=>g.self>g.opp).length,l=games.filter(g=>g.self<g.opp).length;return w>l?"win":l>w?"lose":"draw";};
+  const filtered=filter==="all"?sorted:sorted.filter(m=>{const gs=m.games||[];return(m.result||(gs.length?calcResult(gs):"draw"))===filter;});
+  const totalW=matches.filter(m=>{const gs=m.games||[];return(m.result||(gs.length?calcResult(gs):"draw"))==="win";}).length;
+  const totalL=matches.filter(m=>{const gs=m.games||[];return(m.result||(gs.length?calcResult(gs):"draw"))==="lose";}).length;
+  const totalD=matches.filter(m=>{const gs=m.games||[];return(m.result||(gs.length?calcResult(gs):"draw"))==="draw";}).length;
+  const scoreStr=(games)=>games.map(g=>`${g.self}-${g.opp}`).join(" / ");
+  const totalScore=(games)=>{const w=games.filter(g=>g.self>g.opp).length,l=games.filter(g=>g.self<g.opp).length;return`${w}-${l}`;};
+
+  const deleteMatch=(id)=>{setMatches(p=>p.filter(m=>m.id!==id));if(editId===id){setEditId(null);setEditData(null);}};
+  const startEdit=(m)=>{setEditId(m.id);setEditData({...m,games:[...(m.games||[{self:0,opp:0}])],equipment:{...(m.equipment||defEquip())},opponentEquip:{...(m.opponentEquip||defEquip())},partnerEquip:{...(m.partnerEquip||defEquip())},opponent2Equip:{...(m.opponent2Equip||defEquip())}});};
+  const saveEdit=()=>{
+    if(!editData)return;
+    const gs=editData.games||[];
+    const result=gs.some(g=>g.self>0||g.opp>0)?calcResult(gs):editData.result;
+    setMatches(p=>p.map(m=>m.id===editId?{...editData,result}:m));
+    setEditId(null);setEditData(null);
+  };
+  const cancelEdit=()=>{setEditId(null);setEditData(null);};
+  const uf=(field,val)=>setEditData(p=>({...p,[field]:val}));
+  const ue=(key,field,val)=>setEditData(p=>({...p,[key]:{...(p[key]||defEquip()),[field]:val}}));
+  const ug=(gi,field,val)=>setEditData(p=>({...p,games:p.games.map((g,i)=>i===gi?{...g,[field]:Number(val)||0}:g)}));
+
+  return(
+    <div style={{maxWidth:700,margin:"0 auto",paddingTop:"env(safe-area-inset-top,0px)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingTop:8}}>
+        <button onClick={onBack} style={{...aBtn,fontSize:14,padding:"8px 16px",minHeight:40}}>← 戻る</button>
+        <h2 style={{margin:0,fontSize:20,fontWeight:900}}>🏆 試合記録一覧</h2>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
+        {[{v:matches.length,l:"全試合",c:"#e2e8f0"},{v:totalW,l:"勝ち",c:"#22c55e"},{v:totalL,l:"負け",c:"#ef4444"},{v:totalD,l:"引分",c:"#94a3b8"}].map(s=>(
+          <div key={s.l} style={{...card,padding:"10px 8px",textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:900,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#64748b"}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
+        {[{k:"all",l:"すべて",c:"#94a3b8"},{k:"win",l:"勝ち",c:"#22c55e"},{k:"lose",l:"負け",c:"#ef4444"},{k:"draw",l:"引分",c:"#64748b"}].map(f=>(
+          <button key={f.k} onClick={()=>setFilter(f.k)}
+            style={{...bBtn,fontSize:12,padding:"6px 14px",fontWeight:700,flex:1,
+              background:filter===f.k?`${f.c}33`:"rgba(255,255,255,0.06)",
+              border:filter===f.k?`1px solid ${f.c}66`:"1px solid transparent",
+              color:filter===f.k?f.c:"#64748b"}}>
+            {f.l}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length===0?(
+        <div style={{...card,textAlign:"center",padding:40}}>
+          <div style={{fontSize:40,marginBottom:10}}>🏆</div>
+          <div style={{color:"#64748b",fontSize:14}}>{filter==="all"?"試合記録がありません":"該当する試合がありません"}</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {filtered.map(m=>{
+            const gs=m.games||[];
+            const rs=m.result||(gs.length?calcResult(gs):"draw");
+            const isEditing=editId===m.id;
+
+            if(isEditing&&editData){
+              const ed=editData;
+              const EquipEdit=({label,color,eqKey})=>{
+                const eq=ed[eqKey]||defEquip();
+                return(
+                  <div style={{marginBottom:8}}>
+                    <span style={{fontSize:11,color,display:"block",marginBottom:3}}>{label}</span>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                      <select value={eq.racketType||"シェーク"} onChange={e=>ue(eqKey,"racketType",e.target.value)} style={{...inputStyle,fontSize:11,padding:"4px"}}>
+                        {RACKET_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <select value={eq.foreRubber||"裏ソフト"} onChange={e=>ue(eqKey,"foreRubber",e.target.value)} style={{...inputStyle,fontSize:11,padding:"4px"}}>
+                        {RUBBER_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <select value={eq.backRubber||"裏ソフト"} onChange={e=>ue(eqKey,"backRubber",e.target.value)} style={{...inputStyle,fontSize:11,padding:"4px"}}>
+                        {RUBBER_TYPES.map(r=><option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                );
+              };
+              return(
+                <div key={m.id} style={{...card,padding:14,border:"1px solid rgba(59,130,246,0.4)"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#3b82f6",marginBottom:10}}>✏️ 編集中</div>
+                  <div style={{display:"flex",gap:6,marginBottom:8}}>
+                    <button onClick={()=>uf("isDoubles",false)} style={{...bBtn,fontSize:11,padding:"4px 10px",flex:1,background:!ed.isDoubles?"rgba(234,179,8,0.3)":"rgba(255,255,255,0.06)",border:!ed.isDoubles?"1px solid rgba(234,179,8,0.4)":"1px solid transparent"}}>シングルス</button>
+                    <button onClick={()=>uf("isDoubles",true)} style={{...bBtn,fontSize:11,padding:"4px 10px",flex:1,background:ed.isDoubles?"rgba(234,179,8,0.3)":"rgba(255,255,255,0.06)",border:ed.isDoubles?"1px solid rgba(234,179,8,0.4)":"1px solid transparent"}}>ダブルス</button>
+                  </div>
+                  <label style={{display:"flex",flexDirection:"column",gap:3,marginBottom:8}}>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{ed.isDoubles?"対戦相手①":"対戦相手"}</span>
+                    <input type="text" value={ed.opponent||""} onChange={e=>uf("opponent",e.target.value)} style={inputStyle}/>
+                  </label>
+                  {ed.isDoubles&&(<>
+                    <label style={{display:"flex",flexDirection:"column",gap:3,marginBottom:8}}>
+                      <span style={{fontSize:11,color:"#94a3b8"}}>対戦相手②</span>
+                      <input type="text" value={ed.opponent2||""} onChange={e=>uf("opponent2",e.target.value)} style={inputStyle}/>
+                    </label>
+                    <label style={{display:"flex",flexDirection:"column",gap:3,marginBottom:8}}>
+                      <span style={{fontSize:11,color:"#22c55e"}}>味方</span>
+                      <input type="text" value={ed.partner||""} onChange={e=>uf("partner",e.target.value)} style={inputStyle}/>
+                    </label>
+                  </>)}
+                  <div style={{marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                      <span style={{fontSize:11,color:"#94a3b8"}}>ゲームスコア</span>
+                      <button onClick={()=>uf("games",[...ed.games,{self:0,opp:0}])} style={{fontSize:10,color:"#eab308",background:"rgba(234,179,8,0.15)",border:"1px solid rgba(234,179,8,0.3)",borderRadius:4,padding:"1px 6px",cursor:"pointer"}}>＋</button>
+                    </div>
+                    {ed.games.map((g,gi)=>(
+                      <div key={gi} style={{display:"flex",alignItems:"center",gap:4,marginBottom:3}}>
+                        <span style={{fontSize:10,color:"#64748b",width:16}}>{gi+1}.</span>
+                        <input type="number" min={0} max={99} value={g.self} onChange={e=>ug(gi,"self",e.target.value)} style={{...inputStyle,width:44,textAlign:"center",fontSize:13,padding:"3px"}}/>
+                        <span style={{fontSize:11,color:"#64748b"}}>-</span>
+                        <input type="number" min={0} max={99} value={g.opp} onChange={e=>ug(gi,"opp",e.target.value)} style={{...inputStyle,width:44,textAlign:"center",fontSize:13,padding:"3px"}}/>
+                        {ed.games.length>1&&<button onClick={()=>uf("games",ed.games.filter((_,i)=>i!==gi))} style={{fontSize:9,color:"#64748b",background:"none",border:"none",cursor:"pointer"}}>✕</button>}
+                      </div>
+                    ))}
+                  </div>
+                  <EquipEdit label="自分の用具" color="#94a3b8" eqKey="equipment"/>
+                  {ed.isDoubles&&<EquipEdit label="味方の用具" color="#22c55e" eqKey="partnerEquip"/>}
+                  <EquipEdit label="相手の用具" color="#f97316" eqKey="opponentEquip"/>
+                  {ed.isDoubles&&<EquipEdit label="相手②の用具" color="#f97316" eqKey="opponent2Equip"/>}
+                  <label style={{display:"flex",flexDirection:"column",gap:3,marginBottom:10}}>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>振り返り</span>
+                    <textarea value={ed.notes||""} onChange={e=>uf("notes",e.target.value)} rows={2} style={{...taStyle,minHeight:50}}/>
+                  </label>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={saveEdit} style={{...aBtn,background:"rgba(34,197,94,0.3)",fontSize:13,padding:"8px 16px",fontWeight:700,flex:1}}>✅ 保存</button>
+                    <button onClick={cancelEdit} style={{...aBtn,fontSize:13,padding:"8px 16px"}}>キャンセル</button>
+                  </div>
+                </div>
+              );
+            }
+
+            const EquipLine=({label,color,eq})=>{
+              if(!eq)return null;
+              return(
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:9,color,fontWeight:700,minWidth:24}}>{label}</span>
+                  {eq.racketType&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:"rgba(255,255,255,0.06)",color:"#94a3b8"}}>{eq.racketType}</span>}
+                  <span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:"rgba(59,130,246,0.12)",color:"#93c5fd"}}>F:{eq.foreRubber||"裏ソフト"}</span>
+                  {(eq.backRubber||"裏ソフト")!=="なし"?
+                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:"rgba(239,68,68,0.12)",color:"#fca5a5"}}>B:{eq.backRubber||"裏ソフト"}</span>:
+                    <span style={{fontSize:9,padding:"1px 5px",borderRadius:3,background:"rgba(255,255,255,0.06)",color:"#64748b"}}>B:なし</span>
+                  }
+                </div>
+              );
+            };
+            return(
+              <div key={m.id} style={{...card,padding:14,borderLeft:`3px solid ${rs==="win"?"#22c55e":rs==="lose"?"#ef4444":"#64748b"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{padding:"2px 10px",borderRadius:8,fontSize:12,fontWeight:700,
+                      background:rs==="win"?"rgba(34,197,94,0.2)":rs==="lose"?"rgba(239,68,68,0.2)":"rgba(148,163,184,0.2)",
+                      color:rs==="win"?"#22c55e":rs==="lose"?"#ef4444":"#94a3b8"}}>
+                      {rs==="win"?"🎉 勝ち":rs==="lose"?"😤 負け":"🤝 引分"}
+                    </span>
+                    <span style={{fontWeight:700,fontSize:15}}>vs {m.opponent}{m.isDoubles&&m.opponent2?` / ${m.opponent2}`:""}</span>
+                    {gs.length>0&&<span style={{fontSize:16,fontWeight:900,color:"#e2e8f0"}}>{totalScore(gs)}</span>}
+                  </div>
+                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                    <button onClick={()=>startEdit(m)} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:6,color:"#3b82f6",fontSize:10,padding:"3px 8px",cursor:"pointer"}}>編集</button>
+                    <ConfirmDelete onDelete={()=>deleteMatch(m.id)} size="small"/>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                  <span style={{fontSize:12,color:"#64748b"}}>{m.date}</span>
+                  {m.isDoubles&&<span style={{fontSize:10,padding:"1px 8px",borderRadius:6,background:"rgba(234,179,8,0.12)",color:"#eab308"}}>ダブルス</span>}
+                  {m.isDoubles&&m.partner&&<span style={{fontSize:10,padding:"1px 8px",borderRadius:6,background:"rgba(34,197,94,0.12)",color:"#22c55e"}}>味方: {m.partner}</span>}
+                </div>
+                {gs.length>0&&<div style={{fontSize:12,color:"#94a3b8",marginBottom:6}}>ゲーム: {scoreStr(gs)}</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:6}}>
+                  <EquipLine label="自分" color="#94a3b8" eq={m.equipment}/>
+                  <EquipLine label="相手" color="#f97316" eq={m.opponentEquip}/>
+                  {m.isDoubles&&<EquipLine label="味方" color="#22c55e" eq={m.partnerEquip}/>}
+                  {m.isDoubles&&<EquipLine label="相手②" color="#f97316" eq={m.opponent2Equip}/>}
+                </div>
+                {m.notes&&<div style={{fontSize:12,color:"#cbd5e1",whiteSpace:"pre-wrap",lineHeight:1.6,padding:"8px 10px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>{m.notes}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════ NOTES PAGE ════════════ */
+function NotesPage({notes,setNotes,title}){
+  return(
+    <div style={{maxWidth:700,margin:"0 auto"}}>
+      <div style={{...card}}>
+        <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:900}}>{title}</h2>
+        <p style={{margin:"0 0 16px",fontSize:12,color:"#64748b"}}>戦術の詳細、ポイント、注意点などを自由に記述してください</p>
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)} style={taStyle} rows={12}
+          placeholder={"例:\n\n【狙い】\n相手のバック側に長いサーブを出し、返球を待って3球目をフォアストレートに打ち込む\n\n【使う場面】\n・相手がバックハンドが苦手な場合\n・試合序盤の様子見\n\n【注意点】\n・サーブの長さが短くならないよう注意\n・3球目は無理に強打せずコースを突く"}/>
+      </div>
+      <div style={{marginTop:12,fontSize:11,color:"#475569",textAlign:"center"}}>💡 図面ページと合わせて保存されます</div>
+    </div>
+  );
+}
+
+
+function PersistentApp(){
+  const [screen,setScreen]=useState("home");
+  const [saved,setSaved]=usePersist(STORAGE_KEYS.saved,[]);
+  const [logs,setLogs]=usePersist(STORAGE_KEYS.logs,[]);
+  const [matches,setMatches]=usePersist(STORAGE_KEYS.matches,[]);
+  const [presets,setPresets]=usePersist(STORAGE_KEYS.presets,{locations:[],contents:[]});
+  const [equipment,setEquipment]=usePersist(STORAGE_KEYS.equipment,{racket:"",foreRubber:"",backRubber:"",foreDate:"",backDate:"",history:[]});
+  const [serveOrders,setServeOrders]=usePersist("tt_serveOrders",[]);
+  const [editIdx,setEditIdx]=useState(-1);
+  const [title,setTitle]=useState("");
+  const [drawings,setDrawings]=useState([]);
+  const [memos,setMemos]=useState([]);
+  const [notes,setNotes]=useState("");
+  const [editorTab,setEditorTab]=useState("draw");
+
+  const openNew=()=>{setTitle("");setDrawings([]);setMemos([]);setNotes("");setEditIdx(-1);setEditorTab("draw");setScreen("editor");};
+  const openEdit=(i)=>{const t=saved[i];setTitle(t.title);setDrawings(t.drawings);setMemos(t.memos);setNotes(t.notes||"");setEditIdx(i);setEditorTab("draw");setScreen("editor");};
+  const [saveMsg,setSaveMsg]=useState("");
+  const saveCurrent=()=>{
+    const entry={id:Date.now(),title:title||"新しい戦術",drawings:[...drawings],memos:[...memos],notes,date:today()};
+    if(editIdx>=0){setSaved(p=>p.map((s,i)=>i===editIdx?entry:s));}
+    else{setSaved(p=>[entry,...p]);setEditIdx(0);}
+    setSaveMsg("✅ 保存しました");setTimeout(()=>setSaveMsg(""),2000);
+  };
+  const deleteSaved=(i)=>setSaved(p=>p.filter((_,j)=>j!==i));
+
+  const bg={minHeight:"100vh",background:"linear-gradient(135deg,#0f172a,#1e293b,#0f172a)",fontFamily:"'Noto Sans JP','Hiragino Kaku Gothic Pro',sans-serif",color:"#e2e8f0",padding:"16px 12px"};
+
+  return(
+    <div style={bg}>
+      {screen==="home"&&<HomeScreen onNew={openNew} onGallery={()=>setScreen("gallery")} onLog={()=>setScreen("log")} onEquip={()=>setScreen("equip")} onMatchHistory={()=>setScreen("matchHistory")} saved={saved} setSaved={setSaved} logs={logs} setLogs={setLogs} matches={matches} setMatches={setMatches} presets={presets} setPresets={setPresets} equipment={equipment} setEquipment={setEquipment} serveOrders={serveOrders} setServeOrders={setServeOrders}/>}
+      {screen==="gallery"&&<GalleryScreen saved={saved} onBack={()=>setScreen("home")} onOpen={openEdit} onDelete={deleteSaved} onServeOrder={()=>setScreen("serve")}/>}
+      {screen==="log"&&<LogScreen logs={logs} setLogs={setLogs} matches={matches} setMatches={setMatches} presets={presets} setPresets={setPresets} onBack={()=>setScreen("home")}/>}
+      {screen==="equip"&&<EquipScreen equipment={equipment} setEquipment={setEquipment} logs={logs} onBack={()=>setScreen("home")}/>}
+      {screen==="serve"&&<ServeOrderScreen saved={saved} serveOrders={serveOrders} setServeOrders={setServeOrders} onBack={()=>setScreen("gallery")}/>}
+      {screen==="matchHistory"&&<MatchHistoryScreen matches={matches} setMatches={setMatches} onBack={()=>setScreen("home")}/>}
+      {screen==="editor"&&(
+        <>
+          <div style={{maxWidth:650,margin:"0 auto 6px",paddingTop:"env(safe-area-inset-top,0px)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <button onClick={()=>setScreen("home")} style={{...aBtn,fontSize:13,padding:"8px 14px",minHeight:40,flexShrink:0}}>← 戻る</button>
+              <input type="text" value={title} onChange={e=>setTitle(e.target.value)} placeholder="タイトルを入力" style={{...inputStyle,flex:1,fontSize:14,fontWeight:700,textAlign:"center",minWidth:0,padding:"8px 10px"}}/>
+            </div>
+          </div>
+          <div style={{maxWidth:650,margin:"0 auto 10px",display:"flex",justifyContent:"center",gap:4}}>
+            {[{id:"draw",lb:"⚡ 図面"},{id:"notes",lb:"📄 戦術ノート"}].map(pg=>(
+              <button key={pg.id} onClick={()=>setEditorTab(pg.id)} style={{...bBtn,fontSize:13,padding:"6px 18px",fontWeight:700,background:editorTab===pg.id?"rgba(59,130,246,0.45)":"rgba(255,255,255,0.06)",borderBottom:editorTab===pg.id?"2px solid #3b82f6":"2px solid transparent"}}>{pg.lb}</button>
+            ))}
+          </div>
+          {editorTab==="draw"&&<DrawPage drawings={drawings} setDrawings={setDrawings} memos={memos} setMemos={setMemos}/>}
+          {editorTab==="notes"&&<NotesPage notes={notes} setNotes={setNotes} title={title}/>}
+          <div style={{maxWidth:650,margin:"16px auto 0",display:"flex",flexDirection:"column",gap:8}}>
+            <button onClick={saveCurrent} style={{...aBtn,background:saveMsg?"rgba(34,197,94,0.5)":"rgba(34,197,94,0.3)",fontSize:15,padding:"12px 20px",fontWeight:700,width:"100%",minHeight:48,borderRadius:12,transition:"all 0.3s"}}>{saveMsg||"💾 保存する"}</button>
+            <ShareButton title={title} drawings={drawings} memos={memos} notes={notes}/>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PersistentApp/>);
+</script>
+
+</body>
+</html>
